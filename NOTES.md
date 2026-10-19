@@ -241,6 +241,7 @@ Defined in [`include/octocrux/icruxbackend.h`](include/octocrux/icruxbackend.h):
 | 7 | **Approval to Implement Phase 2 Step 4.1 (`PackageModel` & Proxy)** | Requested explicit permission before coding Qt Model/View classes and tests. | **Approved ("sim")** — Implemented and 100% verified. |
 | 9 | **Approval to Implement Phase 2 Step 4.2 (`MainWindow` & `main.cpp`)** | Requested explicit permission before coding Qt 6 GUI (`MainWindow`, toolbar filters, detail dock tabs, application executable). | **Approved (\"sim\")** — Implemented and 100% verified across 52 test functions. |
 | 10 | **Approval to Implement Phase 3 (Transaction Planner & SCOFS Verification)** | Requested explicit permission before coding `TransactionPlanner` and testing CRUX invariants and SCOFS safeguards. | **Approved (\"sim, avança para vermos como fica no SCOFS ok?\")** — Implemented and 100% verified across 64 test functions. |
+| 11 | **Public Git Repository Initialization & Remote Push** | User instructed to create git repository and push all material to GitHub. | **Completed (\"para já cria um repo em https://github.com/dani-77/octoCRUX e coloca lá todo este material\")** — Initialized git on branch `main`, committed full project tree, and pushed to `https://github.com/dani-77/octoCRUX`. |
 
 ---
 
