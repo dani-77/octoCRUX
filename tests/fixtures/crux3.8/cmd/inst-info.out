@@ -1,0 +1,8 @@
+Name:         glibc
+Path:         /usr/ports/core
+Version:      2.40
+Release:      3
+Description:  The C library used in the GNU system
+URL:          https://www.gnu.org/software/libc/
+Maintainer:   CRUX System Team, core-ports at crux dot nu
+Files:        post-install

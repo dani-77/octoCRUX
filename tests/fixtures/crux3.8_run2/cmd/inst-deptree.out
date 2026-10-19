@@ -1,0 +1,179 @@
+-- dependencies ([i] = installed, '-->' = seen before)
+[i] gtk3
+[i]   at-spi2-core
+[i]     dbus
+[i]       expat
+[i]     glib-introspection
+[i]       gobject-introspection
+[i]         desktop-file-utils
+[i]           glib
+[i]             elfutils
+[i]               bzip2
+[i]               xz
+[i]               zlib
+[i]             libpcre2
+[i]             meson
+[i]               python3-setuptools
+[i]                 python3
+[i]                   bzip2
+[i]                   expat
+[i]                   gdbm
+[i]                     readline
+[i]                       ncurses
+[i]                   libffi
+[i]                   libnsl
+[i]                   libtirpc
+[i]                   libxcrypt
+[i]                     glibc
+[i]                   mpdecimal
+[i]                   sqlite3
+[i]                     readline -->
+[i]                     zlib
+[i]                   xz
+[i]             ninja
+[i]               cmake
+[i]                 curl
+[i]                   libnghttp2
+[i]                   openssl
+[i]                   zstd
+[i]                     xz
+[i]                     zlib
+[i]                 expat
+[i]                 jsoncpp
+[i]                 libarchive
+[i]                   acl
+[i]                     attr
+[i]                   bzip2
+[i]                   lzo
+[i]                   zstd -->
+[i]                 libuv
+[i]                 lzlib
+[i]                 ncurses
+[i]                 rhash
+[i]             python3-packaging
+[i]               python3-pyproject-hooks
+[i]                 python3-installer
+[i]                   python3-flit-core
+[i]                     python3 -->
+[i]             util-linux
+[i]               eudev
+[i]                 kmod
+[i]               file
+[i]                 bzip2
+[i]                 zstd -->
+[i]               libcap-ng
+[i]               linux-pam
+[i]               sqlite3 -->
+[i]           pkgconf
+[i]           meson -->
+[i]         shared-mime-info
+[i]           glib -->
+[i]           itstool
+[i]             libxml2
+[i]               zlib
+[i]     intltool
+[i]       p5-xml-parser
+[i]         expat
+[i]         perl
+[i]           db
+[i]           gdbm -->
+[i]           libnsl
+[i]           libtirpc
+[i]           libxcrypt -->
+[i]         p5-file-sharedir-install
+[i]         p5-file-sharedir
+[i]           p5-class-inspector
+[i]     xorg-libxtst
+[i]       xorg-libxi
+[i]         xorg-libxext
+[i]           xorg-libx11
+[i]             xorg-libxcb
+[i]               xorg-libxau
+[i]                 xorg-xorgproto
+[i]               xorg-libxdmcp
+[i]                 xorg-xorgproto
+[i]               xorg-xcb-proto
+[i]                 python3 -->
+[i]             xorg-xtrans
+[i]               xorg-util-macros
+[i]         xorg-libxfixes
+[i]           xorg-libx11 -->
+[i]   gdk-pixbuf
+[i]     glycin
+[i]       bubblewrap
+[i]         libcap
+[i]           linux-pam
+[i]       fontconfig
+[i]         freetype
+[i]           libpng
+[i]             zlib
+[i]       glib-introspection -->
+[i]       lcms2
+[i]         libtiff
+[i]           libjpeg-turbo
+[i]             nasm
+[i]           zlib
+[i]       libseccomp
+[i]       rust (provided by rust-bin)
+[i]         compiler-rt
+[i]           clang
+[i]             llvm
+[i]               libxml2 -->
+[i]               ninja -->
+[i]               python3-setuptools -->
+[i]         lld
+[i]           llvm -->
+[i]   libepoxy
+[i]     mesa
+[i]       elfutils -->
+[i]       libdrm
+[i]         xorg-libpciaccess
+[i]           zlib
+[i]       libglvnd
+[i]         xorg-libxext -->
+[i]       llvm -->
+[i]       python3-mako
+[i]         python3-markupsafe
+[i]           python3-setuptools -->
+[i]         python3-wheel
+[i]           python3-build
+[i]             python3-packaging -->
+[i]       python3-pyyaml
+[i]         libyaml
+[i]         python3-cython
+[i]           python3-wheel -->
+[i]       xorg-libxdamage
+[i]         xorg-libxfixes -->
+[i]       xorg-libxrandr
+[i]         xorg-libxext -->
+[i]         xorg-libxrender
+[i]           xorg-libx11 -->
+[i]       xorg-libxshmfence
+[i]         xorg-util-macros
+[i]         xorg-xorgproto
+[i]       xorg-libxvmc
+[i]         xorg-libxv
+[i]           xorg-libxext -->
+[i]       xorg-libxxf86vm
+[i]         xorg-libxext -->
+[i]   pango
+[i]     cairo
+[i]       fontconfig -->
+[i]       glib -->
+[i]       xorg-libpixman
+[i]       xorg-libxext -->
+[i]       xorg-libxrender -->
+[i]       xorg-xcb-util
+[i]         xorg-libxcb -->
+[i]     fribidi
+[i]     xorg-libsm
+[i]       util-linux -->
+[i]       xorg-libice
+[i]         xorg-xorgproto
+[i]         xorg-xtrans -->
+[i]     xorg-libxft
+[i]       fontconfig -->
+[i]       harfbuzz
+[i]         freetype -->
+[i]         glib-introspection -->
+[i]       xorg-libxrender -->

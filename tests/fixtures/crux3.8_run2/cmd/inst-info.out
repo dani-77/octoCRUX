@@ -1,0 +1,8 @@
+Name:         gtk3
+Path:         /usr/ports/opt
+Version:      3.24.52
+Release:      1
+Description:  A multi-platform toolkit for creating graphical user interfaces
+URL:          https://www.gtk.org/
+Maintainer:   CRUX System Team, core-ports at crux dot nu
+Dependencies: at-spi2-core,gdk-pixbuf,libepoxy,pango

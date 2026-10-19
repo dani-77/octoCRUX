@@ -1,0 +1,4 @@
+Package qtermwidget6 was not found in the pkg-config search path.
+Perhaps you should add the directory containing `qtermwidget6.pc'
+to the PKG_CONFIG_PATH environment variable
+Package 'qtermwidget6' not found

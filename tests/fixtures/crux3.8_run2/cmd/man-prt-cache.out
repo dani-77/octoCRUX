@@ -1,0 +1,36 @@
+
+prt‐cache(8)			      System Manager’s Manual			       prt‐cache(8)
+
+NAME
+     prt-cache - call prt-get using a cache file as a data source
+
+SYNOPSIS
+     prt-cache command [options] <arguments>
+
+DESCRIPTION
+     prt-cache	is  a  synonym	for  prt-get  ‐‐cache.	 It’s perfectly the same as calling prt-get
+     ‐‐cache, just shorter. See man prt‐get(8) for details on how to use prt‐get
+
+     Even though there are almost restrictions on using prt‐cache over prt‐get, it’s mostly  recom‐
+     mended  for  the  following  commands:  search,  dsearch, list, info, depends, quickdep, diff,
+     quickdiff and info.  It won’t work for the dup command.
+
+     Using prt‐cache isinst is not recommended (really not!)
+
+     Note that if the cache is not up to date (and there’s a newer port in the	ports  tree),  prt‐
+     cache install and prt‐cache update will use the version from the ports tree anyway, so there’s
+     no real risk.
+
+     If	 you’re	 using	prt‐cache,  make sure to regenerate the cache by calling prt‐get cache each
+     time you make changes to the ports tree!
+
+     To create a cache, just invoke prt‐get cache.  Make sure you have the right permissions to	 do
+     this
+
+AUTHORS
+     Johannes Winkelmann <jw@tks6.net>
+
+SEE ALSO
+     prt‐get(8), pkgmk(8) pkgadd(8), ports(8)
+
+										       prt‐cache(8)

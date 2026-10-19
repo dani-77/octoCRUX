@@ -1,0 +1,4 @@
+Package  File
+gcc      usr/lib/libstdc++.so.6
+gcc      usr/lib/libstdc++.so.6.0.33
+gcc      usr/lib/libstdc++.so.6.0.33-gdb.py

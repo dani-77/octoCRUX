@@ -1,0 +1,47 @@
+pkginfo(8)										 pkginfo(8)
+
+NAME
+     pkginfo - display software package information
+
+SYNOPSIS
+     pkginfo [options]
+
+DESCRIPTION
+     pkginfo  is  a  package management utility, which displays information about software packages
+     that are installed on the system or that reside in a particular directory.
+
+OPTIONS
+     -i, --installed
+	    List installed packages and their version.
+
+     -l, --list <package|file>
+	    List files owned by the specified <package> or contained in <file>.
+
+     -o, --owner <pattern>
+	    List owner(s) of file(s) matching <pattern>.
+
+     -f, --footprint <file>
+	    Print footprint for <file>. This feature is mainly used by pkgmk(8)	 for  creating	and
+	    comparing footprints.
+
+     -r, --root <path>
+	    Specify alternative installation root (default is "/"). This should be used if you want
+	    to	display information about a package that is installed on a temporary mounted parti‐
+	    tion, which is "owned" by another system. By using this option you specify which  pack‐
+	    age database to use.
+
+     -v, --version
+	    Print version and exit.
+
+     -h, --help
+	    Print help and exit.
+
+SEE ALSO
+     pkgadd(8), pkgrm(8), pkgmk(8), rejmerge(8)
+
+COPYRIGHT
+     pkginfo  (pkgutils) is Copyright (c) 2000‐2005 Per Liden and Copyright (c) 2006‐2021 CRUX team
+     (http://crux.nu).	pkginfo (pkgutils) is licensed through	the  GNU  General  Public  License.
+     Read the COPYING file for the complete license.
+
+pkgutils 5.40.12									 pkginfo(8)

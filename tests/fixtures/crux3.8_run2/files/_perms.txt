@@ -1,0 +1,31 @@
+-rw-r--r-- 1 0 0 172 set  6 15:16 /etc/os-release
+absent: /usr/lib/os-release
+-rw-r--r-- 1 0 0 1499 out  1 23:37 /etc/prt-get.conf
+-rw-r--r-- 1 0 0 1161 set 20 23:35 /etc/pkgmk.conf
+-rw-r--r-- 1 0 0 670 set  6 16:28 /etc/pkgadd.conf
+-rw-r--r-- 1 0 0 73 set  6 16:29 /etc/prt-get.aliases
+absent: /var/lib/pkg/prt-get.aliases
+-rw-r--r-- 1 0 0 32 out  1 23:49 /var/lib/pkg/prt-get.locker
+absent: /var/lib/pkg/prt-get.cache
+-rw-r--r-- 1 0 0 97 set  6 16:28 /etc/ports/compat-32.pub
+-rw-r--r-- 1 0 0 83 set  6 16:28 /etc/ports/compat-32.rsync
+-rw-r--r-- 1 0 0 83 set 29 09:04 /etc/ports/compat-32.rsync.inactive
+-rw-r--r-- 1 0 0 95 set  6 16:28 /etc/ports/contrib.pub
+-rw-r--r-- 1 0 0 79 set  6 16:28 /etc/ports/contrib.rsync
+-rw-r--r-- 1 0 0 79 set 29 09:04 /etc/ports/contrib.rsync.inactive
+-rw-r--r-- 1 0 0 92 set  6 16:28 /etc/ports/core.pub
+-rw-r--r-- 1 0 0 73 set  6 16:28 /etc/ports/core.rsync
+-rw-r--r-- 1 0 0 244 set 15 15:31 /etc/ports/d77crux.httpup
+-rw-r--r-- 1 0 0 113 set 16 13:38 /etc/ports/d77crux.pub
+-rw-r--r-- 1 0 0 91 set  6 16:28 /etc/ports/opt.pub
+-rw-r--r-- 1 0 0 71 set  6 16:28 /etc/ports/opt.rsync
+-rw-r--r-- 1 0 0 92 set  6 16:28 /etc/ports/xorg.pub
+-rw-r--r-- 1 0 0 73 set  6 16:28 /etc/ports/xorg.rsync
+-rw-r--r-- 1 0 0 1313 set 15 15:38 /usr/ports/opt/gtk3/Pkgfile
+-rw-r--r-- 1 0 0 30115 set 22 19:22 /usr/ports/opt/gtk3/.footprint
+-rw-r--r-- 1 0 0 601 set 15 15:38 /usr/ports/opt/gtk3/.signature
+-rw-r--r-- 1 0 0 477 set 15 15:38 /usr/ports/opt/a2ps/Pkgfile
+-rw-r--r-- 1 0 0 14100 set 15 15:38 /usr/ports/opt/a2ps/.footprint
+-rw-r--r-- 1 0 0 417 set 15 15:38 /usr/ports/opt/a2ps/.signature
+-rw-r--r-- 1 0 0 1995 set 30 09:48 /etc/fstab
+absent: /etc/doas.conf

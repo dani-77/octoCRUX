@@ -1,0 +1,8 @@
+total 72
+drwxr-xr-x   2 0 0  4096 set 22 19:22 .
+drwxr-xr-x 480 0 0 20480 out 16 01:10 ..
+-rw-r--r--   1 0 0 30115 set 22 19:22 .footprint
+-rw-r--r--   1 0 0  1574 set 15 15:38 gtk.immodules
+-rw-r--r--   1 0 0   128 set 15 15:38 gtk-register-3.sh
+-rw-r--r--   1 0 0  1313 set 15 15:38 Pkgfile
+-rw-r--r--   1 0 0   601 set 15 15:38 .signature

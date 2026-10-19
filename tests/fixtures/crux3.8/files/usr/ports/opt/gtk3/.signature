@@ -1,0 +1,7 @@
+untrusted comment: verify with /etc/ports/opt.pub
+RWSE3ohX2g5d/ZszET/8zww3tDHwm9zJKLRnTI9nQCxkTAOEPCXe9C4P84LMYGeuJxIP63wo+uoqTaFTM9UD+RL4sE9ijm1B5gY=
+SHA256 (Pkgfile) = b0f1a1d7b8432551f7535cbc103b696e01aa796fbf611b5b3213f268ad98d92a
+SHA256 (.footprint) = 1d15ffe477b718b050ebf4197123b67ee83c67d29d8d4688a7ae676055dd1481
+SHA256 (gtk-3.24.52.tar.xz) = 80931fa472a77b9a164f6740e3c0b444fac6770054632d35a7ff9d679e5e7b9f
+SHA256 (gtk-register-3.sh) = ee9fab456cb6bc816e55ebaa61d095ead47eb1ed6a25eee85f21509fa4e40374
+SHA256 (gtk.immodules) = 1d7ed9a4110e57e6c0caf3daa376007cb4926d205e8165fa3de7c2fa83243f67

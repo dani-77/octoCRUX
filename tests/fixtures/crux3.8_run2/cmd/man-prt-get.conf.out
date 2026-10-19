@@ -1,0 +1,132 @@
+
+prt‐get.conf(5)				File Formats Manual			    prt‐get.conf(5)
+
+NAME
+     prt‐get.conf ‐ Configuration file for prt‐get
+
+DESCRIPTION
+     This  file, by default /etc/prt‐get.conf, is read by prt‐get and prt‐cache (see prt‐get(8) and
+     prt‐cache(8))
+
+     It might look like this:
+
+	    ###
+	    # prt‐get.conf
+
+	    # root directories
+	    prtdir /usr/ports/base
+	    prtdir /usr/ports/opt
+	    prtdir /usr/ports/contrib
+
+	    prtdir /usr/ports/unofficial
+
+	    # use mutt and yafc from local build directory
+	    prtdir /home/jw/build:mutt, yafc
+
+	    # change default location of cache file
+	    cachefile /tmp/port‐cache
+
+	    # write a log file
+	    writelog enabled
+	    logmode append
+	    logfile /tmp/log/%n.log
+
+	    # show compact readme information
+	    readme compact
+
+	    # execute pre‐ and post‐installs scripts (default no)
+	    runscripts yes
+
+	    # don’t prefer higher versions (default no)
+	    preferhigher yes
+
+	    # use regexps for searching (default no)
+	    useregex yes
+
+     There are a few values to be configured: the location where to look for the ports,	 the  loca‐
+     tion of the cache file, some log options and how to notify the user about README files.
+
+     If you don’t specify the cache file, the default location is /var/lib/pkg/prt‐get.cache
+
+     Every  line  can  contain	one configuration option. The format of the lines is <key> <value>.
+     The valid keys are prtdir and cachefile.  The value for prtdir is a directory, the	 value	for
+     cachefile is a file to be used as cache
+
+     <portname1>:<dependency1> <dependency2>
+     <portname2>:<dependency1>
+
+     runscripts
+     if set to yes, execute pre‐ and post‐install scripts
+
+     preferhigher
+     if set to yes, prt‐get will parse version strings and prefer the
+     higher one, even if the one found in the ports tree is lower. Will
+     influence diff, quickdiff and sysup
+
+     useregex
+     if set to yes, prt‐get will interpret search and filter patterns in
+     list, listinst, printf, search, dsearch and fsearch as regular
+     expressions. This will be the default in prt‐get 0.6.
+
+     makecommand
+     addcommand
+     removecommand
+     runscriptcommand
+     can be used to use an alternate command instead of ’pkgmk’ for the
+     makecommand,’pkgadd’ for the addcommand, ’pkgrm’ for the
+     removecommand and ’sh’ for the command which is used to run the pre‐ and
+     post‐install scripts. These are expert options which shouldn’t be used
+     in general; when used the wrong way, they can completely break prt‐get’s
+     original functionality.
+
+     The log options are
+     writelog
+     which can be set to ’enabled’ or ’disabled’
+     logmode
+     which can be set to ’append’ or ’overwrite’
+     rmlog_on_success
+     which can be set to ’yes’ or ’no’; when set to yes, log files of
+     successful builds will be removed
+     logfile
+     which represent the file path. All occurances of %n in logfile are
+     replaced with the port name and all occurances of	%p are
+     replaced with the port’s path, e.g. for port gcc in base, %p would be
+     /usr/base
+     and %n
+     gcc.
+     This allows you to have separate log files per port.
+
+     If the readme option is set to something different than ’disabled’,
+     prt‐get will notify the user if she/he installs a port with a README
+     file. The option to configure this is called
+     readme
+     which can be set to ’verbose’ (print separate information about README
+     files), ’compact’ (integrate in result output) or ’disabled’ (no information about README files). See
+     prt‐get(8)
+     and especially the readme command how to read those README files using
+     prt‐get
+
+     The order of the prtdir options is important, as if a port is in multiple
+     directories, prt‐get will use the one found first (directories listed
+     first have precedence)
+
+     If you want to restrict the ports used from one prtdir, you can
+     append a comma separated list of ports to be used after the path,
+     using a colon (’:’) character to separate the two components
+     path:package1, package2,...
+     Note that this slows down prt‐get a lot if you list a lot of packages.
+     If you become aware of speed problems due to this, create a separate
+     ports directory instead and use symlinks for the ports you want to use
+
+     You can write comments after a ’#’ character. If you have ’#’
+     characters in you pathes, there’s no way to escape them (as there is no
+     way to escape ’:’ characters). Complain to the author if this is a
+     problem :‐)
+
+AUTHORS
+     Johannes Winkelmann <jw@tks6.net>
+
+SEE ALSO
+     prt‐get(8), pkgmk(8) pkgadd(8), ports(8)
+
+										    prt‐get.conf(5)

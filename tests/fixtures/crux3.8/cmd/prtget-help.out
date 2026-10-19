@@ -1,0 +1,98 @@
+prt-get 5.19.9 by Johannes Winkelmann, jw@tks6.net
+Usage: prt-get <command> [options]
+where commands are:
+
+INFORMATION
+  help                       show this help
+  version                    show the current version
+  list     [<filter>]        show a list of available ports
+  printf   <format>          print formatted list of available ports
+  listinst [<filter>][--depsort]  show a list of installed ports
+  listorphans                list of ports with no packages depending on them
+  info     <port>            show info about a port
+  path     <port>            show path of a port
+  readme   <port>            show a port's readme file (if it exists)
+  dup                        Find duplicate ports
+  isinst   <port1 port2...>  print whether ports are installed
+  current  <port>            print installed version of port
+
+DIFFERENCES / CHECK FOR UPDATES
+  diff     <port1 port2...>  list outdated packages (or check args for change)
+  quickdiff                  same as diff but simple format
+          where opt can be:
+    --all            display locked ports too
+    --prefer-higher  prefer higher installed versions over lower ports
+    --strict-diff    override prefer higher configuration setting
+
+DEPENDENCIES
+  depends   <port1 port2...>  show dependencies for these ports
+  quickdep  <port1 port2...>  same as 'depends' but simple format
+  deptree   <port>            show dependencies tree for <port>
+  dependent [opt] <port>      show installed packages which depend on 'port'
+          where opt can be:
+                --all    list all dependent packages, not only installed
+                --recursive    print recursive listing
+                --tree         print recursive tree listing
+
+SEARCHING
+  search  <expr>     show port names containing 'expr'
+  dsearch <expr>     show ports containing 'expr' in the name or description
+  fsearch <pattern>  show file names in footprints matching 'pattern'
+
+INSTALL, UPDATE and REMOVAL
+  install [opt] <port1 port2...>    install ports
+  update  [opt] <port1 port2...>    update ports
+  grpinst [opt] <port1 port2...>    install ports, stop on error
+  depinst [opt] <port1 port2...>    install ports and their dependencies
+  remove [opt] <port1 port2...>     remove ports
+          where opt can be:
+                -f, -fi             force installation
+                -fr                 force rebuild
+                -uf                 update footprint
+                -if                 ignore footprint
+                -um                 update md5sum
+                -im                 ignore md5sum
+                -us                 update signature
+                -is                 ignore signature
+                --margs=<string>    pass 'string' to pkgmk
+                --aargs=<string>    pass 'string' to pkgadd
+                --rargs=<string>    pass 'string' to pkgrm
+                --test              test mode
+                --log               write log file
+                --ignore=<package1,package2,...>
+                                    Don't install/update those packages
+                --pre-install       execute pre-install script
+                --post-install      execute post-install script
+                --install-scripts   execute pre-install and post-install script
+
+SYSTEM UPDATE 
+  sysup [opt]                       update all outdated ports
+          where opt can be:
+                --nodeps            don't sort by dependencies
+                --test              test mode
+                --log               write log file
+                --prefer-higher     prefer higher installed versions over lower ones in ports tree
+                --strict-diff       override prefer higher configuration setting
+  lock <port1 port2...>             lock current version of packages
+  unlock <port1 port2...>           unlock packages
+  listlocked                        list locked packages
+
+FILE OPERATIONS 
+  ls <port>                         print a listing of the port's directory
+  cat <port> <file>                 print out 'port/file'
+  edit <port> <file>                edit 'port/file'
+
+GENERAL OPTIONS
+                -v                 Show version in listing
+                -vv                Show version and decription in listing
+
+                --path             Print path to port if appropriate (search, list, depends)
+
+                --cache             Use a cache file
+                --config=<file>     Use alternative configuration file
+                --install-root=..   Use alternative install root directory
+                --no-std-config     Don't parse default configuration file
+                --config-prepend=.. Prepend '..' to configuration
+                --config-append=..  Append '..' to configuration
+                --config-set=..     Set configuration data '..',
+                                       overriding config file

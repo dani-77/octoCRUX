@@ -1,0 +1,10 @@
+Matching Defaults entries for dani77 on d77crux:
+   
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin
+
+Runas and Command-specific defaults for dani77:
+    Defaults!/usr/sbin/visudo env_keep+="SUDO_EDITOR EDITOR VISUAL"
+
+User dani77 may run the following commands on d77crux:
+    (ALL : ALL) ALL
+    (ALL) NOPASSWD: ALL

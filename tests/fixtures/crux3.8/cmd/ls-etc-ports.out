@@ -1,0 +1,18 @@
+total 68
+drwxr-xr-x  3 0 0 4096 set 29 09:04 .
+drwxr-xr-x 53 0 0 4096 out 19 16:40 ..
+-rw-r--r--  1 0 0   97 set  6 16:28 compat-32.pub
+-rw-r--r--  1 0 0   83 set  6 16:28 compat-32.rsync
+-rw-r--r--  1 0 0   83 set 29 09:04 compat-32.rsync.inactive
+-rw-r--r--  1 0 0   95 set  6 16:28 contrib.pub
+-rw-r--r--  1 0 0   79 set  6 16:28 contrib.rsync
+-rw-r--r--  1 0 0   79 set 29 09:04 contrib.rsync.inactive
+-rw-r--r--  1 0 0   92 set  6 16:28 core.pub
+-rw-r--r--  1 0 0   73 set  6 16:28 core.rsync
+-rw-r--r--  1 0 0  244 set 15 15:31 d77crux.httpup
+-rw-r--r--  1 0 0  113 set 16 13:38 d77crux.pub
+drwxr-xr-x  2 0 0 4096 out  1 19:18 drivers
+-rw-r--r--  1 0 0   91 set  6 16:28 opt.pub
+-rw-r--r--  1 0 0   71 set  6 16:28 opt.rsync
+-rw-r--r--  1 0 0   92 set  6 16:28 xorg.pub
+-rw-r--r--  1 0 0   73 set  6 16:28 xorg.rsync

@@ -1,0 +1,23 @@
+# Build artifacts
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.a
+*.so
+*.o
+
+# Qt Generated
+*.moc
+moc_*.cpp
+*_autogen/
+
+# Diagnostics tarballs
+*.tar.gz
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*~

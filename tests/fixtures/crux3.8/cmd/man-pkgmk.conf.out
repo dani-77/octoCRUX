@@ -1,0 +1,88 @@
+pkgmk.conf(5)									      pkgmk.conf(5)
+
+NAME
+     pkgmk.conf - Configuration file for pkgmk.
+
+DESCRIPTION
+     pkgmk.conf configures pkgutils package make, pkgmk(8).
+
+FILE FORMAT
+     The  file	consists of a number of variable assignments of the form option=value. Comments can
+     be specified by putting a hash (#) symbol as the first character on the line.
+
+DIRECTIVES
+     If some option is not used (commented out or not included in the configuration  file  at  all)
+     pkgmk will take a default action.
+
+     export CFLAGS=’STRING’
+	    Set C compiler options.
+	    Default: none
+
+     export CXXFLAGS=’STRING’
+	    Set C++ compiler options.
+	    Default: none
+
+     export JOBS=’NUMBER’
+	    Set the number of commands to run simultaneously when building a port.
+	    Default: none
+
+     export MAKEFLAGS=’STRING’
+	    Set make options.
+	    Default: none
+
+     PKGMK_SOURCE_MIRRORS=(’STRING’)
+	    Set mirrors to check and download source archives from.
+	    Default: none
+
+     PKGMK_SOURCE_DIR=’STRING’
+	    Set directory for downloaded source archives.
+	    Default: directory of Pkgfile.
+
+     PKGMK_PACKAGE_DIR=’STRING’
+	    Set directory for built packages.
+	    Default: directory of Pkgfile.
+
+     PKGMK_WORK_DIR=’STRING’
+	    Set directory for building packages.
+	    Default: ’foo/work’, where foo is the directory of the Pkgfile.
+
+     PKGMK_DOWNLOAD_PROG=’STRING’
+	    Use specified program to download source archives. Valid strings are curl and wget.
+	    Default: ’curl’
+
+     PKGMK_CURL_OPTS=’STRING’
+	    Additional options for curl(1), which is used by pkgmk to download all files.
+
+     PKGMK_WGET_OPTS=’STRING’
+	    Additional options for wget(1), which is used by pkgmk to download all files.
+
+     PKGMK_DOWNLOAD=’STRING’
+	    If set to ’yes’, pkgmk will download the source archives if necessary.
+	    Default: ’no’
+
+     PKGMK_IGNORE_FOOTPRINT=’STRING’
+	    If set to ’yes’, pkgmk will not perform a footprint check of the built package.
+	    Default: ’no’
+
+     PKGMK_IGNORE_NEW=’STRING’
+	    If set to ’yes’, pkgmk will ignore new files in a footprint mismatch.
+	    Default: ’no’
+
+     PKGMK_NO_STRIP=’STRING’
+	    If set to ’no’, pkgmk will strip built binaries.
+	    Default: ’no’
+
+     PKGMK_COMPRESSION_MODE=’STRING’
+	    Option to select the mode used to compress the packages. Valid strings are gz, bz2, xz,
+	    lz, and zst.
+	    Default: ’gz’
+
+SEE ALSO
+     pkgmk(8)
+
+COPYRIGHT
+     pkgmk  (pkgutils)	is  Copyright (c) 2000‐2005 Per Liden and Copyright (c) 2006‐2021 CRUX team
+     (http://crux.nu).	pkgmk (pkgutils) is licensed through the GNU General Public License.   Read
+     the COPYING file for the complete license.
+
+pkgutils 5.40.12								      pkgmk.conf(5)

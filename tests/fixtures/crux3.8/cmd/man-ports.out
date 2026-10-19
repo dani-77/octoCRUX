@@ -1,0 +1,47 @@
+ports(8)										   ports(8)
+
+NAME
+     ports - update/list ports collection
+
+SYNOPSIS
+     ports [options] [collection ...]
+
+DESCRIPTION
+     ports  connects  to one or more master repositories and updates the local copy of a ports col‐
+     lection. If no collections are specified then all collections will be updated.  A	port  is  a
+     directory containing all necessary files for building a software package using pkgmk(8).
+
+OPTIONS
+     -u, --update
+	    Update ports.
+
+     -l, --list
+	    List ports.
+
+     -d, --diff
+	    List version differences between local ports and installed packages.
+
+     -v, --version
+	    Print version and exit.
+
+     -h, --help
+	    Print help and exit.
+
+FILES
+     /usr/ports/
+	    Root of local ports collection.
+
+     /etc/ports/
+	    Directory for port collection configuration.
+
+     /etc/ports/drivers/
+	    Directory for driver scripts.
+
+SEE ALSO
+     pkgadd(8), pkgrm(8), pkginfo(8)
+
+AUTHOR
+     Per Liden <per@fukt.bth.se>
+     http://www.fukt.bth.se/˜per/
+
+ports 1.7										   ports(8)

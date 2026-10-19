@@ -1,0 +1,28 @@
+usage: pkgmk [options]
+options:
+  -i,   --install             build and install package
+  -u,   --upgrade             build and install package (as upgrade)
+  -r,   --recursive           search for and build packages recursively
+  -d,   --download            download missing source file(s)
+  -do,  --download-only       do not build, only download missing source file(s)
+  -eo,  --extract-only        do not build, only extract source file(s)
+  -utd, --up-to-date          do not build, only check if package is up to date
+  -uf,  --update-footprint    update footprint using result from last build
+  -if,  --ignore-footprint    build package without checking footprint
+  -in,  --ignore-new          build package, ignore new files in a footprint missmatch
+  -um,  --update-md5sum       update md5sum
+  -im,  --ignore-md5sum       build package without checking md5sum
+  -cm,  --check-md5sum        do not build, only check md5sum
+  -us,  --update-signature    update signature including sha256 checksums
+  -cs,  --check-signature     check the validity of the port files
+  -is,  --ignore-signature    build package without checking the signature
+  -rs,  --refresh-signature   create new signature and keep existing sha256 checksums
+  -sk,  --secret-key <file>   use <file> to sign the port
+  -pk,  --public-key <file>   check the port signature using public-key <file>
+  -ns,  --no-strip            do not strip executable binaries or libraries
+  -f,   --force               build package even if it appears to be up to date
+  -c,   --clean               remove package and downloaded files
+  -kw,  --keep-work           keep temporary working directory
+  -cf,  --config-file <file>  use alternative configuration file
+  -v,   --version             print version and exit
+  -h,   --help                print help and exit

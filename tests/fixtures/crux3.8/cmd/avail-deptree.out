@@ -1,0 +1,4 @@
+-- dependencies ([i] = installed, '-->' = seen before)
+[ ] a2ps
+[ ]   boehm-gc
+[ ]   paper

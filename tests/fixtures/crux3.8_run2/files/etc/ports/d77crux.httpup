@@ -1,0 +1,5 @@
+# Daniel Azevedo's port collection.
+# Source: https://github.com/dani-77/d77crux/blob/master/d77crux.httpup
+# Use HTTPS for the upstream HTTPUP endpoint.
+ROOT_DIR=/usr/ports/d77crux
+URL=https://raw.githubusercontent.com/dani-77/d77crux/master/

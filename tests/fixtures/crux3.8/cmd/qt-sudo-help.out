@@ -1,0 +1,13 @@
+Usage: qt-sudo option [command [arguments...]]
+
+GUI frontend for sudo/su
+
+Arguments:
+  option:
+    -h|--help      Print this help.
+    -v|--version   Print version information.
+    -s|--su        Use su(1) as backend.
+    -d|--sudo      Use sudo(8) as backend.
+  command          Command to run.
+  arguments        Optional arguments for command.
+

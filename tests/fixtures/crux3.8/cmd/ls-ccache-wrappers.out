@@ -1,0 +1,8 @@
+total 136
+drwxr-xr-x   2 0 0   4096 out 18 19:57 .
+drwxr-xr-x 112 0 0 131072 out 18 20:24 ..
+lrwxrwxrwx   1 0 0     15 out 18 19:57 c++ -> /usr/bin/ccache
+lrwxrwxrwx   1 0 0     15 out 18 19:57 cc -> /usr/bin/ccache
+lrwxrwxrwx   1 0 0     15 out 18 19:57 cpp -> /usr/bin/ccache
+lrwxrwxrwx   1 0 0     15 out 18 19:57 g++ -> /usr/bin/ccache
+lrwxrwxrwx   1 0 0     15 out 18 19:57 gcc -> /usr/bin/ccache

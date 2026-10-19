@@ -1,0 +1,8 @@
+Name:         a2ps
+Path:         /usr/ports/opt
+Version:      4.15.8
+Release:      1
+Description:  ASCII to Postscript converter (Prettyprint)
+URL:          http://www.gnu.org/software/a2ps/
+Maintainer:   Juergen Daubert, jue at crux dot nu
+Dependencies: boehm-gc,paper

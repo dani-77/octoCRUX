@@ -1,0 +1,266 @@
+
+## System and tool versions
+crux-version: rc=0 CRUX version 3.8
+prtget-version: rc=0 prt-get 5.19.9 by Johannes Winkelmann, jw@tks6.net
+pkgmk-version: rc=0 pkgmk (pkgutils) 5.40.12
+pkgadd-version: rc=0 pkgadd (pkgutils) 5.40.12
+ports-version: rc=0 ports 1.7
+
+## Man pages (verify syntax against the installed version)
+man prt-get: captured (/usr/share/man/man8/prt-get.8.gz)
+man prt-get.conf: captured (/usr/share/man/man5/prt-get.conf.5.gz)
+man prt-cache: captured (/usr/share/man/man8/prt-cache.8.gz)
+man pkgmk: captured (/usr/share/man/man8/pkgmk.8.gz)
+man pkgmk.conf: captured (/usr/share/man/man5/pkgmk.conf.5.gz)
+man pkgadd: captured (/usr/share/man/man8/pkgadd.8.gz)
+man pkgrm: captured (/usr/share/man/man8/pkgrm.8.gz)
+man pkginfo: captured (/usr/share/man/man8/pkginfo.8.gz)
+man ports: captured (/usr/share/man/man8/ports.8.gz)
+
+## Configuration files
+prt-get.conf directives:
+  prtdir /usr/ports/d77crux
+  prtdir /usr/ports/core
+  prtdir /usr/ports/opt
+  prtdir /usr/ports/xorg
+  prtdir /usr/ports/compat-32
+  prtdir /usr/ports/contrib
+  writelog enabled         # (enabled|disabled)
+  rmlog_on_success yes     # (no|yes)
+  logfile  /var/log/pkgbuild/%n.log
+  runscripts yes             # (no|yes)
+makecommand: <not set>
+effective pkgmk config (deduced): /etc/pkgmk.conf
+
+## Effective pkgmk configuration
+sourced /etc/pkgmk.conf in a minimal environment (see cmd/pkgmk-conf-effective.out)
+  PKGMK_WORK_DIR=/usr/ports/work/
+  PKGMK_SOURCE_DIR=/usr/ports/distfiles
+  PKGMK_PACKAGE_DIR=/usr/ports/packages
+  PKGMK_COMPRESSION_MODE=zst
+  CFLAGS=-O2 -march=skylake -pipe
+  CXXFLAGS=-O2 -march=skylake -pipe
+  MAKEFLAGS=-j 4
+  PATH=/usr/lib/ccache:/usr/bin:/bin
+  CCACHE_DIR=/var/cache/ccache
+  DISTCC_HOSTS=
+NOTE: values are as seen when sourcing; pkgmk may expand per-port names later.
+
+## Footprint and integrity overrides
+  pkgmk.conf sets no PKGMK_IGNORE_* variable
+  pkgmk default: 792:				PKGMK_IGNORE_FOOTPRINT="yes" ;;
+  pkgmk default: 794:				PKGMK_IGNORE_NEW="yes" ;;
+  pkgmk default: 806:				PKGMK_IGNORE_SIGNATURE="yes" ;;
+  pkgmk default: 991:PKGMK_IGNORE_FOOTPRINT="no"
+  pkgmk default: 992:PKGMK_IGNORE_NEW="no"
+  pkgmk default: 999:PKGMK_IGNORE_SIGNATURE="no"
+  prt-get -if: advertised
+  prt-get -is: advertised
+  prt-get -im: advertised
+  prt-get -uf: advertised
+  prt-get --margs: advertised
+  prt-get --test: advertised
+  prt-get --pre-install: advertised
+  prt-get --post-install: advertised
+  pkgmk -if: advertised
+  pkgmk -is: advertised
+  pkgmk -im: advertised
+  pkgmk -uf: advertised
+  pkgmk -um: advertised
+  pkgmk -us: advertised
+  pkgmk --ignore-footprint: advertised
+
+## prt-get printf: delimiters and escapes
+printf-escaped: rc=0; printf-literaltab: rc=0
+backslash escapes in the format ARE interpreted
+blank lines with explicit newline in format: 0 (non-zero suggests prt-get appends its own newline)
+literal-tab output: 2307 lines, 0 with field count != 8
+%i value distribution:
+        4 diff
+     1761 no
+      542 yes
+empty field counts (desc %d / deps %e): 0 / 450
+sample %e value: boehm-gc,paper
+
+## prt-get printf: individual tokens
+%n: ok  sample: a2ps|aardvark-dns|abiword|abook|
+%p: ok  sample: /usr/ports/compat-32|/usr/ports/contrib|/usr/ports/core|/usr/ports/d77crux|
+%v: ok  sample: 0.001013|0.003|0.004|0.01|
+%r: ok  sample: 1|2|3|4|
+%d: ok  sample: 8086 assembler and loader which can generate 32-bit code for|80x86 assembler|A 2D graphics library with support for multiple output devic|A 2D Physics Engine for Games|
+%e: ok  sample: aardvark-dns,go-md2man,protobuf|abseil-cpp|abseil-cpp,argon2,box2d,clucene,dragonbox,fakeroot,fast_floa|acl|
+%u: ok  sample: http://0pointer.de/lennart/projects/libcanberra|http://0pointer.de/lennart/projects/libdaemon/|http://abisource.com/|http://aspell.net|
+%P: FAILED/EMPTY (rc=0)  sample: 
+%M: ok  sample: CRUX compat-32 Team, compat-32-ports at crux dot nu|CRUX KDE Ports, kde-ports at crux dot nu|CRUX system team, core-ports at crux dot nu|CRUX System Team, core-ports at crux dot nu|
+%R: ok  sample: no|yes|
+%E: ok  sample: no|yes|
+%O: ok  sample: no|yes|
+%l: ok  sample: no|yes|
+%i: ok  sample: diff|no|yes|
+
+## Lists, diff and locks
+outdated: printf %i=diff vs quickdiff mismatches: 4 (see diff-from-*.txt)
+duplicate port names in printf output: 0
+listlocked: rc=0, 5 lines
+
+## Cache
+printf-nocache: rc=0 57ms first line: a2ps	4.15.8	no
+printf-cache-flag: rc=255 err="Can't open cache file: /var/lib/pkg/prt-get.cache" 2ms first line: 
+printf-prt-cache: rc=255 err="Can't open cache file: /var/lib/pkg/prt-get.cache" 3ms first line: 
+
+## Sample ports
+installed sample: gtk3
+inst (gtk3): dependent rc=0 7 lines; dependent --all rc=0 38 lines
+available sample: a2ps
+avail (a2ps): dependent rc=0 0 lines; dependent --all rc=0 0 lines
+
+## Error behaviour with a nonexistent port
+nx info: rc=255 out= err=Package 'octocrux-nonexistent-port-zz' not found
+nx path: rc=255 out= err=Package 'octocrux-nonexistent-port-zz' not found
+nx isinst: rc=255 out=package octocrux-nonexistent-port-zz is not installed err=
+nx current: rc=1 out=Package octocrux-nonexistent-port-zz not installed err=
+nx depends: rc=255 out= err=The package 'octocrux-nonexistent-port-zz' could not be found: 
+nx quickdep: rc=255 out= err=The package 'octocrux-nonexistent-port-zz' could not be found: 
+nx dependent: rc=0 out= err=
+
+## Build directories and mounts (real mounts, not fstab)
+work: /usr/ports/work/ -> mount /usr/ports/work (tmpfs), 10485760 KiB free
+source: /usr/ports/distfiles -> mount / (ext4), 401771856 KiB free
+package: /usr/ports/packages -> mount / (ext4), 401771856 KiB free
+ports tree: /usr/ports -> mount / (ext4), 401771856 KiB free
+built packages in /usr/ports/packages: 260 (rc=0)
+
+## ccache / distcc
+pkgmk.conf PATH includes ccache: /usr/lib/ccache:/usr/bin:/bin
+ccache dir: /var/cache/ccache (from pkgmk.conf)
+ccache: /var/cache/ccache -> mount / (ext4), 401771764 KiB free
+entries not owned by the ccache dir owner (uid 0): 0 (see cmd/ccache-foreign-owners.*)
+
+## Privilege helpers
+sudo: /usr/bin/sudo
+doas: not found
+su: /usr/bin/su
+qt-sudo: /usr/bin/qt-sudo
+lxqt-sudo: not found
+kdesu: not found
+pkexec: /usr/bin/pkexec
+  installed: qt-sudo 2.4.1-1
+  installed: sudo 1.9.17p2-1
+
+## Qt and build tooling
+pkgconfig-qt6core: rc=0 6.12.0
+pkgconfig-qtermwidget6: rc=1 err="Package qtermwidget6 was not found in the pkg-config search path." 
+cmake-version: rc=0 cmake version 3.31.12
+
+## Session environment (selected variables)
+see env.txt
+
+## Exit codes and durations
+avail-current                      rc=1    12ms
+avail-dependent-all                rc=0    40ms
+avail-dependent                    rc=0    39ms
+avail-depends                      rc=0    18ms
+avail-deptree                      rc=0    19ms
+avail-info                         rc=0    11ms
+avail-isinst                       rc=255  13ms
+avail-path                         rc=0    9ms
+avail-portdir-ls                   rc=0    3ms
+avail-quickdep                     rc=0    9ms
+ccache-config                      rc=0    3ms
+ccache-foreign-owners              rc=0    4ms
+ccache-stats                       rc=0    5ms
+ccache-version                     rc=0    4ms
+cmake-version                      rc=0    6ms
+crux-version                       rc=0    8ms
+inst-current                       rc=0    12ms
+inst-dependent-all                 rc=0    43ms
+inst-dependent                     rc=0    49ms
+inst-depends                       rc=0    20ms
+inst-deptree                       rc=0    21ms
+inst-info                          rc=0    10ms
+inst-isinst                        rc=0    13ms
+inst-path                          rc=0    9ms
+inst-pkginfo-l                     rc=0    104ms
+inst-portdir-ls                    rc=0    3ms
+inst-quickdep                      rc=0    11ms
+ls-cache                           rc=2    3ms
+ls-ccache-dir                      rc=0    3ms
+ls-ccache-wrappers                 rc=0    2ms
+ls-doas-conf                       rc=2    2ms
+ls-etc-ports                       rc=0    2ms
+ls-var-lib-pkg                     rc=0    2ms
+manpath-pkgadd                     rc=0    18ms
+manpath-pkginfo                    rc=0    18ms
+manpath-pkgmk.conf                 rc=0    16ms
+manpath-pkgmk                      rc=0    18ms
+manpath-pkgrm                      rc=0    16ms
+manpath-ports                      rc=0    17ms
+manpath-prt-cache                  rc=0    20ms
+manpath-prt-get.conf               rc=0    17ms
+manpath-prt-get                    rc=0    40ms
+man-pkgadd                         rc=0    34ms
+man-pkginfo                        rc=0    38ms
+man-pkgmk.conf                     rc=0    38ms
+man-pkgmk                          rc=0    41ms
+man-pkgrm                          rc=0    36ms
+man-ports                          rc=0    38ms
+man-prt-cache                      rc=0    42ms
+man-prt-get.conf                   rc=0    40ms
+man-prt-get                        rc=0    47ms
+nx-current                         rc=1    12ms
+nx-dependent                       rc=0    41ms
+nx-depends                         rc=255  9ms
+nx-info                            rc=255  10ms
+nx-isinst                          rc=255  12ms
+nx-path                            rc=255  10ms
+nx-quickdep                        rc=255  9ms
+package-dir-sample                 rc=0    5ms
+pkgadd-version                     rc=0    7ms
+pkgconfig-qt6core                  rc=0    3ms
+pkgconfig-qt6widgets               rc=0    3ms
+pkgconfig-qtermwidget6             rc=1    21ms
+pkginfo-i-C                        rc=0    100ms
+pkginfo-i                          rc=0    96ms
+pkginfo-o-absolute                 rc=0    195ms
+pkginfo-o-relative                 rc=0    175ms
+pkginfo-version                    rc=0    7ms
+pkgmk-conf-effective               rc=0    5ms
+pkgmk-defaults                     rc=0    5ms
+pkgmk-help                         rc=0    12ms
+pkgmk-version                      rc=0    31ms
+ports-version                      rc=0    16ms
+printf-cache-flag                  rc=255  2ms
+printf-escaped                     rc=0    63ms
+printf-literaltab                  rc=0    56ms
+printf-nocache                     rc=0    57ms
+printf-prt-cache                   rc=255  3ms
+printf-token-d                     rc=0    54ms
+printf-token-e                     rc=0    53ms
+printf-token-i                     rc=0    53ms
+printf-token-l                     rc=0    53ms
+printf-token-n                     rc=0    54ms
+printf-token-p                     rc=0    54ms
+printf-token-r                     rc=0    53ms
+printf-token-upper-E               rc=0    53ms
+printf-token-upper-M               rc=0    55ms
+printf-token-upper-O               rc=0    53ms
+printf-token-upper-P               rc=0    53ms
+printf-token-upper-R               rc=0    53ms
+printf-token-u                     rc=0    54ms
+printf-token-v                     rc=0    53ms
+prtget-diff-C                      rc=0    28ms
+prtget-diff                        rc=0    29ms
+prtget-dup                         rc=0    10ms
+prtget-help                        rc=0    10ms
+prtget-listinst                    rc=0    43ms
+prtget-listlocked                  rc=0    17ms
+prtget-listorphans                 rc=0    37ms
+prtget-list                        rc=0    12ms
+prtget-noargs                      rc=255  11ms
+prtget-quickdiff                   rc=0    26ms
+prtget-version                     rc=0    10ms
+qmake6-version                     rc=0    5ms
+qt-sudo-help                       rc=0    24ms
+sudo-list-noninteractive           rc=0    6ms
+sudo-version                       rc=0    4ms
+uname                              rc=0    8ms

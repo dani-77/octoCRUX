@@ -1,0 +1,36 @@
+# Description: A multi-platform toolkit for creating graphical user interfaces
+# URL: https://www.gtk.org/
+# Maintainer: CRUX System Team, core-ports at crux dot nu
+# Depends on: at-spi2-core gdk-pixbuf libepoxy pango
+# Optional: colord cups libxkbcommon wayland-protocols
+
+name=gtk3
+version=3.24.52
+release=1
+source=(https://download.gnome.org/sources/gtk/${version:0:4}/gtk-$version.tar.xz
+    gtk-register-3.sh gtk.immodules)
+
+build () {
+    prt-get isinst colord || PKGMK_GTK3+=' -Dcolord=no'
+    prt-get isinst libxkbcommon wayland-protocols && PKGMK_GTK3+=' -D wayland_backend=true' || PKGMK_GTK3+=' -Dwayland_backend=false'
+
+    CFLAGS+=" -DG_ENABLE_DEBUG -DG_DISABLE_CAST_CHECKS"
+    meson setup gtk-$version build $PKGMK_GTK3 \
+        --prefix=/usr \
+        -D buildtype=plain \
+        --wrap-mode=nodownload \
+        -D b_lto=true \
+        -D b_pie=true \
+        -D man=false \
+        -D gtk_doc=false \
+        -D examples=false \
+        -D tests=false \
+        -D installed_tests=false \
+        -D demos=false
+    meson compile -C build
+    DESTDIR=$PKG meson install -C build
+
+    rm -r $PKG/usr/share/{locale,gtk-3.0,themes/Emacs}
+    install -m 0644 -D $SRC/gtk.immodules $PKG/usr/lib/gtk-3.0/3.0.0/immodules.cache
+    install -m 0755 $SRC/gtk-register-3.sh $PKG/usr/bin/gtk-register-3
+}

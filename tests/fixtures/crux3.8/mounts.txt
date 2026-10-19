@@ -1,0 +1,40 @@
+== work: /usr/ports/work/
+drwxrwxrwt 2 0 0 40 out 19 16:40 /usr/ports/work/
+/usr/ports/work tmpfs tmpfs rw,noatime,size=10485760k,inode64
+Filesystem     1024-blocks  Used Available Capacity Mounted on
+tmpfs             10485760     0  10485760       0% /usr/ports/work
+Filesystem      Inodes IUsed   IFree IUse% Mounted on
+tmpfs          2036294     1 2036293    1% /usr/ports/work
+
+== source: /usr/ports/distfiles
+drwxrwxrwt 4 0 0 20480 out 18 20:02 /usr/ports/distfiles
+/ /dev/nvme0n1p3 ext4 rw,relatime
+Filesystem     1024-blocks     Used Available Capacity Mounted on
+/dev/root        471338224 45538052 401783996      11% /
+Filesystem       Inodes  IUsed    IFree IUse% Mounted on
+/dev/root      30007296 726472 29280824    3% /
+
+== package: /usr/ports/packages
+drwxrwxrwt 2 0 0 20480 out 18 20:02 /usr/ports/packages
+/ /dev/nvme0n1p3 ext4 rw,relatime
+Filesystem     1024-blocks     Used Available Capacity Mounted on
+/dev/root        471338224 45538052 401783996      11% /
+Filesystem       Inodes  IUsed    IFree IUse% Mounted on
+/dev/root      30007296 726472 29280824    3% /
+
+== ports tree: /usr/ports
+drwxr-xr-x 11 0 0 4096 set 29 09:04 /usr/ports
+/ /dev/nvme0n1p3 ext4 rw,relatime
+Filesystem     1024-blocks     Used Available Capacity Mounted on
+/dev/root        471338224 45538052 401783996      11% /
+Filesystem       Inodes  IUsed    IFree IUse% Mounted on
+/dev/root      30007296 726472 29280824    3% /
+
+== ccache: /var/cache/ccache
+drwxr-xr-x 19 0 0 4096 set 20 23:38 /var/cache/ccache
+/ /dev/nvme0n1p3 ext4 rw,relatime
+Filesystem     1024-blocks     Used Available Capacity Mounted on
+/dev/root        471338224 45538144 401783904      11% /
+Filesystem       Inodes  IUsed    IFree IUse% Mounted on
+/dev/root      30007296 726497 29280799    3% /
+

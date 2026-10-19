@@ -1,0 +1,34 @@
+pkgrm(8)										   pkgrm(8)
+
+NAME
+     pkgrm - remove software package
+
+SYNOPSIS
+     pkgrm [options] <package>
+
+DESCRIPTION
+     pkgrm  is	a package management utility, which removes/uninstalls a previously installed soft‐
+     ware packages.
+
+OPTIONS
+     -r, --root <path>
+	    Specify alternative installation root (default is "/"). This should be used if you want
+	    to remove a package from a temporary mounted partition, which  is  "owned"	by  another
+	    system.  By using this option you not only specify where the software is installed, but
+	    you also specify which package database to use.
+
+     -v, --version
+	    Print version and exit.
+
+     -h, --help
+	    Print help and exit.
+
+SEE ALSO
+     pkgadd(8), pkginfo(8), pkgmk(8), rejmerge(8)
+
+COPYRIGHT
+     pkgrm (pkgutils) is Copyright (c) 2000‐2005 Per Liden and Copyright (c)  2006‐2021	 CRUX  team
+     (http://crux.nu).	 pkgrm (pkgutils) is licensed through the GNU General Public License.  Read
+     the COPYING file for the complete license.
+
+pkgutils 5.40.12									   pkgrm(8)

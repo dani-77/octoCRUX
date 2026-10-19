@@ -1,0 +1,151 @@
+pkgmk(8)										   pkgmk(8)
+
+NAME
+     pkgmk - make software package
+
+SYNOPSIS
+     pkgmk [options]
+
+DESCRIPTION
+     pkgmk is a package management utility, which makes a software package. A package is an archive
+     of files (.pkg.tar.gz, that can be installed using pkgadd(8).
+
+     To	 prepare  to  use pkgmk, you must write a file named Pkgfile that describes how the package
+     should be build. Once a suitable Pkgfile file exists, each time you change some source  files,
+     you  simply  execute pkgmk to bring the package up to date. The pkgmk program uses the Pkgfile
+     file and the last‐modification times of the source files to decide if the package needs to	 be
+     updated.
+
+     Global  build  configuration  is  stored  in  /etc/pkgmk.conf.  This  file is read by pkgmk at
+     startup.
+
+OPTIONS
+     -i, --install
+	    Install package using pkgadd(8) after successful build.
+
+     -u, --upgrade
+	    Install package as an upgrade using pkgadd(8) after successful build.
+
+     -r, --recursive
+	    Search for and build packages recursively.
+
+     -d, --download
+	    Download missing source file(s).
+
+     -do, --download-only
+	    Do not build, only download missing source file(s).
+
+     -utd, --up-to-date
+	    Do not build, only check if the package is up to date.
+
+     -uf, --update-footprint
+	    Update footprint and treat last build as successful.
+
+     -if, --ignore-footprint
+	    Build package without checking footprint.
+
+     -in, --ignore-new
+	    Build package, ignore new files in a footprint mismatch.
+
+     -um, --update-md5sum
+	    Update md5sum using the current source files.
+
+     -im, --ignore-md5sum
+	    Build package without checking md5sum first.
+
+     -cm, --check-md5sum
+	    Check md5sum without building the package.
+
+     -us, --update-signature
+	    Update port signature and sha256sums.
+
+     -cs, --check-signature
+	    Check the validity of files using the signature and sha256sums.
+
+     -is, --ignore-signature
+	    Build package without checking the signature and sha256sums.
+
+     -rs, --refresh-signature
+	    Create new signature and keep existing sha256sums.
+
+     -sk, --secret-key <file>
+	    Use private key in <file> to sign the port. By default, the name of the  port’s  parent
+	    directory  $repo is evaluated and the private key is read from /etc/ports/$repo.sec, if
+	    it exists.
+
+     -pk, --public-key <file>
+	    Use public key in <file> to check the signature. By default, the  name  of	the  port’s
+	    parent   directory	 $repo	 is   evaluated	  and	the   public   key   is	 read  from
+	    /etc/ports/$repo.pub, if it exists.
+
+     -ns, --no-strip
+	    Do not strip executable binaries or libraries.
+
+     -f, --force
+	    Build package even if it appears to be up to date.
+
+     -c, --clean
+	    Remove the (previously built) package and the downloaded source files.
+
+     -kw, --keep‐work
+	    Keep temporary working directory.
+
+     -cf, --config-file <file>
+	    Use alternative configuration file (default is /etc/pkgmk.conf).
+
+     -v, --version
+	    Print version and exit.
+
+     -h, --help
+	    Print help and exit.
+
+FILES
+     Pkgfile
+	    Package build description.
+
+     .footprint
+	    Package footprint (used for regression testing).
+
+     .md5sum
+	    MD5 checksum of source files.
+
+     .signature
+	    SHA256 checksum and signify checksum.
+
+     /etc/pkgmk.conf
+	    Global package make configuration.
+
+     curl   Used by pkgmk to download source code.
+
+     wget   Used by pkgmk to download source code.
+
+EXIT CODES
+     0	    No error occured.
+
+     1	    A general error has occured.
+
+     2	    The Pkgfile is invalid.
+
+     3	    The source or build directory is missing or is lacking read/write permissions.
+
+     4	    An error occured during the download of source files.
+
+     5	    An error occured during unpacking of source files.
+
+     6	    An md5sum mismatch occured.
+
+     7	    A footprint mismatch occured.
+
+     8	    An error occured while running the build function.
+
+     9	    An error occured while installing the package via pkgadd.
+
+SEE ALSO
+     pkgmk.conf(5), pkgadd(8), pkgrm(8), pkginfo(8), rejmerge(8), signify(1), curl(1), wget(1)
+
+COPYRIGHT
+     pkgmk (pkgutils) is Copyright (c) 2000‐2005 Per Liden and Copyright (c)  2006‐2021	 CRUX  team
+     (http://crux.nu).	 pkgmk (pkgutils) is licensed through the GNU General Public License.  Read
+     the COPYING file for the complete license.
+
+pkgutils 5.40.12									   pkgmk(8)

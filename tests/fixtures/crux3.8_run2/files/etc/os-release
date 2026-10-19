@@ -1,0 +1,7 @@
+NAME=CRUX
+VERSION_ID="3.8"
+ID=crux
+PRETTY_NAME="CRUX"
+HOME_URL="https://crux.nu"
+DOCUMENTATION_URL="https://crux.nu/Main/Handbook3-8"
+BUG_REPORT_URL="https://crux.nu/bugs"

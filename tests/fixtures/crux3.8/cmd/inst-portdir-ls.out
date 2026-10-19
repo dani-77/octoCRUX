@@ -1,0 +1,17 @@
+total 1652
+drwxr-xr-x   2 0 0    4096 set 15 15:38 .
+drwxr-xr-x 128 0 0    4096 set 15 15:38 ..
+-rw-r--r--   1 0 0  126721 set 15 15:38 .footprint
+-rw-r--r--   1 0 0    3294 set 15 15:38 glibc-2.39-fhs-1.patch
+-rw-r--r--   1 0 0 1506693 set 15 15:38 glibc-2.40-2.patch
+-rw-r--r--   1 0 0      92 set 15 15:38 host.conf
+-rw-r--r--   1 0 0     298 set 15 15:38 hosts
+-rw-r--r--   1 0 0     106 set 15 15:38 ld.so.conf
+-rwxr-xr-x   1 0 0    1015 set 15 15:38 locale-gen
+-rw-r--r--   1 0 0     627 set 15 15:38 locale.gen.in
+-rw-r--r--   1 0 0      53 set 15 15:38 .nostrip
+-rw-r--r--   1 0 0     373 set 15 15:38 nsswitch.conf
+-rw-r--r--   1 0 0    2408 set 15 15:38 Pkgfile
+-rw-r--r--   1 0 0      48 set 15 15:38 post-install
+-rw-r--r--   1 0 0     114 set 15 15:38 resolv.conf
+-rw-r--r--   1 0 0    1318 set 15 15:38 .signature
