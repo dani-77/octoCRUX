@@ -414,14 +414,42 @@ Operations planning engine enforcing CRUX invariants and SCOFS safeguards:
 - Empirical filesystem inspection via `statvfs` and raw byte reading of `/proc/self/mountinfo`.
 - Unit test `tests/test_transaction_planner.cpp` (12 tests passing).
 
-### 7.4 Immediate Next Step: Phase 4 — Execution Engine & Privilege Helper
-Now that transactions can be computed safely, the execution engine connects the plan to live mutation commands:
-1. **Headless Execution Engine (`CruxProcessRunner`):**
-   - Non-blocking `QProcess` runner with asynchronous streaming of stdout and stderr into the UI.
-   - Real-time line-by-line parsing of `prt-get` and `pkgmk` progress.
-   - Classification of errors into `OperationErrorKind` (mirroring `pkgmk(8)` codes 1–9) by reading `/var/log/pkgbuild/<port>.log` upon failure.
-2. **Dynamic Privilege Escalation Helper (`PrivilegeHelper`):**
-   - Probe available privilege escalation helpers on CRUX (`qt-sudo`, `sudo`, `doas`, `su`).
-   - Run GUI completely unprivileged (UID 1000) and invoke helper only for mutating actions (`prt-get depinst`, `update`, `remove`, `lock`, `unlock`, `ports -u`).
-3. **SCOFS Test 2.10.3 (Cancellation Verification):**
-   - Execute cancellation test in an isolated disposable environment to determine whether `qt-sudo` relays signals to child process groups or requires PTY line discipline (`^C`).
+### 7.4 Phase 4 — Execution Engine, Privilege Helper & Live UI Streaming (Completed & Verified)
+Execution and privilege escalation engine fully implemented and connected to UI:
+- **Build Log Analyzer & Classifier (`src/core/build_log_analyzer.h` / `.cpp`):**
+  - Pure diagnostic classifier categorizing build and package errors into `OperationErrorKind`.
+  - Mapped `pkgmk(8)` exit codes 2–9 (`PkgfileError`, `SourceDirError`, `DownloadError`, `UnpackError`, `ChecksumError`, `FootprintError`, `CompilationError`, `InstallError`).
+  - Implemented prioritized regex matching for wrapper runs (`prt-get` generic exit 1) to identify `DiskSpaceError` (ENOSPC), `FootprintError`, `ChecksumError`, `SignatureError` (signify), and syntax errors.
+  - Extracted failing port names and concise human-readable failure summaries.
+- **Dynamic Privilege Escalation Helper (`src/backend/privilege_helper.h` / `.cpp`):**
+  - Probes available elevation helpers in order of CRUX desktop preference: `qt-sudo` -> `sudo` -> `doas` -> `su` -> unprivileged (`None`).
+  - Implemented exact command wrapping for each backend. Formatted `qt-sudo` invocation as `qt-sudo -d <command> <args...>` based on empirical bare-metal CRUX 3.8 fixture verification (`qt-sudo-help.out`).
+- **Headless Asynchronous Execution Runner (`src/backend/crux_process_runner.h` / `.cpp`):**
+  - Headless `QProcess` runner with non-blocking line-buffered streaming for `stdout` and `stderr`.
+  - Emits `outputReceived(line, isError)` and parses `======> ...` phase headers into `phaseChanged(phase)`.
+  - Graceful cancellation mechanism sending `SIGTERM` with escalation to `SIGKILL` after a 3000ms watchdog timer if the process does not terminate.
+- **Backend Execution Adapter (`src/backend/crux_adapter.h` / `.cpp`):**
+  - Implemented `executeTransaction(plan)` iterating through planned steps with progress updates.
+  - Implemented `syncPortsTree()` (`ports -u`), `lockPort(name)`, and `unlockPort(name)`.
+  - Implemented post-transaction inspection of `/var/lib/pkg/rejected` emitting `rejectedConfigsDetected`.
+- **UI Integration in `MainWindow` (`src/ui/mainwindow.h` / `.cpp`):**
+  - Added 6th detail tab **Output** in bottom pane with dark terminal styling (`#1e1e1e`) and auto-scrolling log streaming.
+  - Toolbar transaction buttons: **Sync** (`ports -u`), **Install**, **Remove**, **Upgrade**, **Lock** / **Unlock**, and **Cancel**.
+  - Status bar execution widgets: `QProgressBar` and `QLabel` displaying active compilation phase.
+  - Custom right-click context menu on ports table (*Install*, *Remove*, *Upgrade*, *Lock/Unlock*, *Copy Port Name*).
+  - Safety confirmations for critical system package removals and alert notifications for rejected config files.
+- **Test Suites (10/10 Suites, 96 Tests Green):**
+  - Added `tests/test_build_log_analyzer.cpp` (14 tests).
+  - Added `tests/test_privilege_helper.cpp` (9 tests).
+  - Added `tests/test_crux_process_runner.cpp` (7 tests).
+  - Updated `tests/test_crux_adapter.cpp` (11 tests) and `tests/test_mainwindow.cpp` (8 tests).
+  - Executed `QT_QPA_PLATFORM=offscreen ctest --test-dir build` with 100% pass rate.
+
+### 7.5 Next Step: Phase 5 — System Tray Daemon (`octocrux-notifier`) & Settings
+1. **System Tray Daemon (`octocrux-notifier`):**
+   - Lightweight standalone background tray indicator (`QSystemTrayIcon`).
+   - Periodic timer polling for available updates via `ports -u` check or diff comparison against installed packages.
+   - Passive notification balloons on new updates found.
+   - Context menu to launch `octocrux` or trigger immediate update.
+2. **Settings & Configuration Storage:**
+   - Persistent preferences (`QSettings`) for build directory path (`PKGMK_WORK_ROOT`), preferred privilege helper (`qt-sudo`, `sudo`, `doas`), and check intervals.

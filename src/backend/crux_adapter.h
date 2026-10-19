@@ -2,6 +2,8 @@
 
 #include "octocrux/icruxbackend.h"
 #include "command_runner.h"
+#include "privilege_helper.h"
+#include "crux_process_runner.h"
 
 #include <memory>
 #include <QMap>
@@ -49,7 +51,11 @@ public:
     QStringList queryAllDeclaredDependents(const QString &portName) override;
     QStringList queryRecursiveInstallOrder(const QString &portName) override;
 
-    // --- Mutations & Execution (Stubs for Phase 1, implemented in Phase 2) ---
+    // --- Privilege helper configuration ---
+    void setPrivilegeHelperType(PrivilegeHelperType type);
+    PrivilegeHelperType privilegeHelperType() const;
+
+    // --- Mutations & Execution ---
     bool executeTransaction(const TransactionPlan &plan) override;
     bool syncPortsTree() override;
     bool lockPort(const QString &portName) override;
@@ -60,8 +66,13 @@ private:
     QString resolvePath(const QString &absolutePath) const;
     QString readTextFile(const QString &resolvedFilePath) const;
     void ensurePortCache();
+    void checkRejectedConfigs();
 
     std::shared_ptr<ICommandRunner> m_runner;
+    PrivilegeHelper m_privilegeHelper;
+    std::unique_ptr<CruxProcessRunner> m_processRunner;
+    bool m_cancellationRequested = false;
+
     QString m_rootPrefix;
     QString m_prtGetBin = QStringLiteral("prt-get");
     QString m_pkginfoBin = QStringLiteral("pkginfo");

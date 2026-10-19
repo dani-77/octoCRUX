@@ -49,7 +49,7 @@ private slots:
     void testQuickdepWithAliasesResolution();
     void testReadPortFile();
     void testPkginfoFilesAndOwner();
-    void testMutationStubs();
+    void testExecutionAndMutations();
 
 private:
     QString readFile(const QString &filePath);
@@ -307,12 +307,54 @@ void TestCruxAdapter::testPkginfoFilesAndOwner() {
     QVERIFY(noOwner.isEmpty());
 }
 
-void TestCruxAdapter::testMutationStubs() {
-    TransactionPlan plan;
-    QVERIFY(!m_adapter->executeTransaction(plan));
-    QVERIFY(!m_adapter->syncPortsTree());
-    QVERIFY(!m_adapter->lockPort(QStringLiteral("any")));
-    QVERIFY(!m_adapter->unlockPort(QStringLiteral("any")));
+void TestCruxAdapter::testExecutionAndMutations() {
+    m_adapter->setPrivilegeHelperType(PrivilegeHelperType::None);
+
+    // 1. Invalid plan fails
+    TransactionPlan invalidPlan;
+    invalidPlan.errors.append(QStringLiteral("Unresolvable cyclic dependency"));
+    QVERIFY(!m_adapter->executeTransaction(invalidPlan));
+
+    // 2. Empty valid plan succeeds
+    TransactionPlan emptyPlan;
+    QVERIFY(m_adapter->executeTransaction(emptyPlan));
+
+    // 3. Plan with step executes via runner
+    TransactionPlan installPlan;
+    TransactionStep step;
+    step.portName = QStringLiteral("leaf");
+    step.action = TransactionAction::Install;
+    installPlan.steps.append(step);
+
+    m_mockRunner->registerResponse(
+        QStringLiteral("prt-get"),
+        {QStringLiteral("depinst"), QStringLiteral("leaf")},
+        {0, QStringLiteral("======> Building 'leaf'\nSuccess\n"), QString()}
+    );
+    QVERIFY(m_adapter->executeTransaction(installPlan));
+
+    // 4. Ports sync
+    m_mockRunner->registerResponse(
+        QStringLiteral("ports"),
+        {QStringLiteral("-u")},
+        {0, QStringLiteral("Synchronizing ports tree...\n"), QString()}
+    );
+    QVERIFY(m_adapter->syncPortsTree());
+
+    // 5. Lock and unlock port
+    m_mockRunner->registerResponse(
+        QStringLiteral("prt-get"),
+        {QStringLiteral("lock"), QStringLiteral("llvm")},
+        {0, QStringLiteral("llvm locked\n"), QString()}
+    );
+    QVERIFY(m_adapter->lockPort(QStringLiteral("llvm")));
+
+    m_mockRunner->registerResponse(
+        QStringLiteral("prt-get"),
+        {QStringLiteral("unlock"), QStringLiteral("llvm")},
+        {0, QStringLiteral("llvm unlocked\n"), QString()}
+    );
+    QVERIFY(m_adapter->unlockPort(QStringLiteral("llvm")));
 }
 
 QTEST_MAIN(TestCruxAdapter)

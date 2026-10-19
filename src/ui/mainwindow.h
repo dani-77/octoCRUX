@@ -3,10 +3,12 @@
 #include "backend/crux_adapter.h"
 #include "model/package_model.h"
 #include "model/package_filter_proxy_model.h"
+#include "operations/transaction_planner.h"
 
 #include <QMainWindow>
 #include <QItemSelection>
 #include <memory>
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 class QTableView;
@@ -40,6 +42,7 @@ public:
     PackageFilterProxyModel* proxyModel() const;
     QTableView* tableView() const;
     QTabWidget* detailTabs() const;
+    QPlainTextEdit* outputLogEdit() const;
 
 public slots:
     void refreshCatalog();
@@ -52,7 +55,21 @@ private slots:
     void onCollectionIndexChanged(int index);
     void onStatusButtonClicked(int id);
     void onPackageSelectionChanged(const QItemSelection &selected, const QItemSelection &deselected);
+
+    // Backend live execution slots
     void onBackendOutputReceived(const QString &text, bool isError);
+    void onProgressChanged(int current, int total, const QString &phase);
+    void onOperationFinished(int exitCode, OperationErrorKind errorKind, const QString &summary);
+    void onRejectedConfigsDetected(const QStringList &rejectedFiles);
+
+    // Action buttons & context menu slots
+    void onSyncPortsClicked();
+    void onInstallClicked();
+    void onRemoveClicked();
+    void onUpgradeClicked();
+    void onToggleLockClicked();
+    void onCancelOperationClicked();
+    void onCustomContextMenuRequested(const QPoint &pos);
 
 private:
     void setupUi();
@@ -62,10 +79,13 @@ private:
     void setupStatusBar();
     void populateCollections();
     void updateStatusBar();
+    void updateActionButtons();
     void loadPortDetails(const PortInfo &port);
     void clearPortDetails();
+    std::optional<PortInfo> currentSelectedPort() const;
 
     std::shared_ptr<ICruxBackend> m_backend;
+    std::unique_ptr<TransactionPlanner> m_planner;
     std::unique_ptr<PackageModel> m_packageModel;
     std::unique_ptr<PackageFilterProxyModel> m_proxyModel;
 
@@ -80,6 +100,14 @@ private:
     QLineEdit *m_editSearch = nullptr;
     QToolButton *m_btnRefresh = nullptr;
 
+    // Action buttons
+    QToolButton *m_btnSync = nullptr;
+    QToolButton *m_btnInstall = nullptr;
+    QToolButton *m_btnRemove = nullptr;
+    QToolButton *m_btnUpgrade = nullptr;
+    QToolButton *m_btnLock = nullptr;
+    QToolButton *m_btnCancel = nullptr;
+
     // Main layout
     QSplitter *m_mainSplitter = nullptr;
     QTableView *m_tableView = nullptr;
@@ -91,11 +119,16 @@ private:
     QPlainTextEdit *m_pkgfileEdit = nullptr;
     QPlainTextEdit *m_footprintEdit = nullptr;
     QTextBrowser *m_readmeBrowser = nullptr;
+    QPlainTextEdit *m_outputLogEdit = nullptr;
 
-    // Status bar labels
+    // Status bar widgets
     QLabel *m_statusSummaryLabel = nullptr;
     QLabel *m_statusFilterLabel = nullptr;
+    QLabel *m_operationPhaseLabel = nullptr;
+    QProgressBar *m_progressBar = nullptr;
     QLabel *m_backendLabel = nullptr;
+
+    bool m_operationInProgress = false;
 };
 
 } // namespace OctoCRUX

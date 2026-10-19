@@ -2,10 +2,12 @@
 #include "core/printf_parser.h"
 #include "core/aliases_parser.h"
 #include "core/dependency_parser.h"
+#include "core/build_log_analyzer.h"
 
 #include <QFile>
 #include <QTextStream>
 #include <QFileInfo>
+#include <QDir>
 #include <QRegularExpression>
 
 namespace OctoCRUX {
@@ -360,29 +362,178 @@ QStringList CruxAdapter::queryRecursiveInstallOrder(const QString &portName) {
     return DependencyParser::resolveQuickdepWithAliases(rawOrder, aliases, installedSet);
 }
 
-// --- Mutations & Execution (Phase 1 Stubs) ---
+// --- Privilege helper configuration ---
+void CruxAdapter::setPrivilegeHelperType(PrivilegeHelperType type) {
+    m_privilegeHelper.setHelperType(type);
+}
+
+PrivilegeHelperType CruxAdapter::privilegeHelperType() const {
+    return m_privilegeHelper.helperType();
+}
+
+// --- Mutations & Execution ---
 bool CruxAdapter::executeTransaction(const TransactionPlan &plan) {
-    Q_UNUSED(plan);
-    emit operationFinished(-1, OperationErrorKind::None, QStringLiteral("Mutation operations not yet implemented in Phase 1"));
-    return false;
+    m_cancellationRequested = false;
+
+    if (!plan.isValid()) {
+        const QString err = plan.errors.join(QStringLiteral("; "));
+        emit outputReceived(QStringLiteral("[octoCRUX] Error: %1").arg(err), true);
+        emit operationFinished(-1, OperationErrorKind::GeneralError, err);
+        return false;
+    }
+
+    if (plan.steps.isEmpty()) {
+        emit operationFinished(0, OperationErrorKind::None, QStringLiteral("No operations in transaction plan"));
+        return true;
+    }
+
+    const int totalSteps = plan.steps.size();
+
+    for (int i = 0; i < totalSteps; ++i) {
+        if (m_cancellationRequested) {
+            emit outputReceived(QStringLiteral("\n[octoCRUX] Transaction aborted by user.\n"), true);
+            emit operationFinished(130, OperationErrorKind::GeneralError, QStringLiteral("Transaction cancelled by user"));
+            return false;
+        }
+
+        const TransactionStep &step = plan.steps.at(i);
+        QString program = m_prtGetBin;
+        QStringList args;
+        QString phaseDescription;
+
+        switch (step.action) {
+        case TransactionAction::Install:
+            args = {QStringLiteral("depinst"), step.portName};
+            phaseDescription = QStringLiteral("Installing %1 (%2/%3)").arg(step.portName).arg(i + 1).arg(totalSteps);
+            break;
+        case TransactionAction::Upgrade:
+            args = {QStringLiteral("update"), step.portName};
+            phaseDescription = QStringLiteral("Updating %1 (%2/%3)").arg(step.portName).arg(i + 1).arg(totalSteps);
+            break;
+        case TransactionAction::Reinstall:
+            args = {QStringLiteral("update"), QStringLiteral("-fr"), step.portName};
+            phaseDescription = QStringLiteral("Reinstalling %1 (%2/%3)").arg(step.portName).arg(i + 1).arg(totalSteps);
+            break;
+        case TransactionAction::Remove:
+            args = {QStringLiteral("remove"), step.portName};
+            phaseDescription = QStringLiteral("Removing %1 (%2/%3)").arg(step.portName).arg(i + 1).arg(totalSteps);
+            break;
+        case TransactionAction::Lock:
+            args = {QStringLiteral("lock"), step.portName};
+            phaseDescription = QStringLiteral("Locking %1 (%2/%3)").arg(step.portName).arg(i + 1).arg(totalSteps);
+            break;
+        case TransactionAction::Unlock:
+            args = {QStringLiteral("unlock"), step.portName};
+            phaseDescription = QStringLiteral("Unlocking %1 (%2/%3)").arg(step.portName).arg(i + 1).arg(totalSteps);
+            break;
+        }
+
+        emit progressChanged(i + 1, totalSteps, phaseDescription);
+        emit outputReceived(QStringLiteral("======> %1").arg(phaseDescription), false);
+
+        const QStringList wrappedCmd = m_privilegeHelper.wrap(program, args);
+        const QString execProg = wrappedCmd.first();
+        const QStringList execArgs = wrappedCmd.mid(1);
+
+        CommandResult res = m_runner->run(execProg, execArgs);
+
+        if (!res.stdOut.isEmpty()) {
+            const QStringList lines = res.stdOut.split(QLatin1Char('\n'));
+            for (const QString &line : lines) {
+                if (!line.isEmpty()) emit outputReceived(line, false);
+            }
+        }
+        if (!res.stdErr.isEmpty()) {
+            const QStringList lines = res.stdErr.split(QLatin1Char('\n'));
+            for (const QString &line : lines) {
+                if (!line.isEmpty()) emit outputReceived(line, true);
+            }
+        }
+
+        if (!res.succeeded()) {
+            const QString combinedLog = res.stdErr + QLatin1Char('\n') + res.stdOut;
+            const OperationErrorKind errorKind = BuildLogAnalyzer::classifyLog(combinedLog, res.exitCode);
+            const QString summary = BuildLogAnalyzer::extractSummary(combinedLog, errorKind);
+
+            emit outputReceived(QStringLiteral("[octoCRUX] Step failed with exit code %1: %2").arg(res.exitCode).arg(summary), true);
+            emit operationFinished(res.exitCode, errorKind, summary);
+            return false;
+        }
+    }
+
+    invalidateCache();
+    checkRejectedConfigs();
+
+    emit operationFinished(0, OperationErrorKind::None, QStringLiteral("Transaction completed successfully"));
+    return true;
 }
 
 bool CruxAdapter::syncPortsTree() {
-    emit operationFinished(-1, OperationErrorKind::None, QStringLiteral("syncPortsTree not yet implemented in Phase 1"));
-    return false;
+    emit progressChanged(1, 1, QStringLiteral("Updating ports tree via 'ports -u'..."));
+    emit outputReceived(QStringLiteral("======> Updating ports tree (ports -u)"), false);
+
+    const QStringList wrappedCmd = m_privilegeHelper.wrap(QStringLiteral("ports"), {QStringLiteral("-u")});
+    CommandResult res = m_runner->run(wrappedCmd.first(), wrappedCmd.mid(1));
+
+    if (!res.stdOut.isEmpty()) {
+        const QStringList lines = res.stdOut.split(QLatin1Char('\n'));
+        for (const QString &line : lines) {
+            if (!line.isEmpty()) emit outputReceived(line, false);
+        }
+    }
+    if (!res.stdErr.isEmpty()) {
+        const QStringList lines = res.stdErr.split(QLatin1Char('\n'));
+        for (const QString &line : lines) {
+            if (!line.isEmpty()) emit outputReceived(line, true);
+        }
+    }
+
+    if (!res.succeeded()) {
+        emit operationFinished(res.exitCode, OperationErrorKind::GeneralError, QStringLiteral("Failed to update ports tree"));
+        return false;
+    }
+
+    invalidateCache();
+    emit operationFinished(0, OperationErrorKind::None, QStringLiteral("Ports tree updated successfully"));
+    return true;
 }
 
 bool CruxAdapter::lockPort(const QString &portName) {
-    Q_UNUSED(portName);
+    const QStringList wrappedCmd = m_privilegeHelper.wrap(m_prtGetBin, {QStringLiteral("lock"), portName});
+    CommandResult res = m_runner->run(wrappedCmd.first(), wrappedCmd.mid(1));
+    if (res.succeeded()) {
+        invalidateCache();
+        return true;
+    }
     return false;
 }
 
 bool CruxAdapter::unlockPort(const QString &portName) {
-    Q_UNUSED(portName);
+    const QStringList wrappedCmd = m_privilegeHelper.wrap(m_prtGetBin, {QStringLiteral("unlock"), portName});
+    CommandResult res = m_runner->run(wrappedCmd.first(), wrappedCmd.mid(1));
+    if (res.succeeded()) {
+        invalidateCache();
+        return true;
+    }
     return false;
 }
 
 void CruxAdapter::cancelActiveOperation() {
+    m_cancellationRequested = true;
+    if (m_processRunner && m_processRunner->isRunning()) {
+        m_processRunner->cancel();
+    }
+}
+
+void CruxAdapter::checkRejectedConfigs() {
+    const QString rejectedPath = resolvePath(QStringLiteral("/var/lib/pkg/rejected"));
+    QDir dir(rejectedPath);
+    if (dir.exists()) {
+        const QStringList files = dir.entryList(QDir::Files | QDir::NoDotAndDotDot);
+        if (!files.isEmpty()) {
+            emit rejectedConfigsDetected(files);
+        }
+    }
 }
 
 } // namespace OctoCRUX

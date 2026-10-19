@@ -120,3 +120,54 @@ target_compile_definitions(test_transaction_planner PRIVATE
 )
 
 add_test(NAME test_transaction_planner COMMAND test_transaction_planner)
+
+# Define test_build_log_analyzer executable
+add_executable(test_build_log_analyzer
+    test_build_log_analyzer.cpp
+)
+
+target_link_libraries(test_build_log_analyzer PRIVATE
+    octocrux_core
+    Qt6::Core
+    Qt6::Test
+)
+
+target_compile_definitions(test_build_log_analyzer PRIVATE
+    OCTOCRUX_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+add_test(NAME test_build_log_analyzer COMMAND test_build_log_analyzer)
+
+# Define test_privilege_helper executable
+add_executable(test_privilege_helper
+    test_privilege_helper.cpp
+)
+
+target_link_libraries(test_privilege_helper PRIVATE
+    octocrux_core
+    Qt6::Core
+    Qt6::Test
+)
+
+target_compile_definitions(test_privilege_helper PRIVATE
+    OCTOCRUX_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+add_test(NAME test_privilege_helper COMMAND test_privilege_helper)
+
+# Define test_crux_process_runner executable
+add_executable(test_crux_process_runner
+    test_crux_process_runner.cpp
+)
+
+target_link_libraries(test_crux_process_runner PRIVATE
+    octocrux_core
+    Qt6::Core
+    Qt6::Test
+)
+
+target_compile_definitions(test_crux_process_runner PRIVATE
+    OCTOCRUX_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+add_test(NAME test_crux_process_runner COMMAND test_crux_process_runner)

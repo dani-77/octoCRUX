@@ -42,6 +42,7 @@ private slots:
     void testCollectionFilterCombo();
     void testSearchBoxFiltering();
     void testPortSelectionUpdatesDetailTabs();
+    void testLiveExecutionStreaming();
 
 private:
     QString readFile(const QString &filePath);
@@ -158,7 +159,7 @@ void TestMainWindow::testPortSelectionUpdatesDetailTabs() {
     QTabWidget *tabs = m_window->detailTabs();
 
     QVERIFY(tabs != nullptr);
-    QCOMPARE(tabs->count(), 5);
+    QCOMPARE(tabs->count(), 6);
 
     // Filter to find "a2ps"
     m_window->setSearchText(QStringLiteral("a2ps"));
@@ -186,8 +187,30 @@ void TestMainWindow::testPortSelectionUpdatesDetailTabs() {
     // Verify Footprint tab loaded the real .footprint
     QVERIFY(footprintEdit->toPlainText().contains(QStringLiteral("usr/bin/a2ps")));
 
+    // Verify Output tab exists
+    auto *outputEdit = m_window->outputLogEdit();
+    QVERIFY(outputEdit != nullptr);
+    QCOMPARE(tabs->tabText(5), QStringLiteral("Output"));
+
     // Clear search
     m_window->setSearchText(QString());
+}
+
+void TestMainWindow::testLiveExecutionStreaming() {
+    QPlainTextEdit *logEdit = m_window->outputLogEdit();
+    QVERIFY(logEdit != nullptr);
+
+    const int initialLength = logEdit->toPlainText().length();
+
+    // Emit live backend output
+    emit m_adapter->outputReceived(QStringLiteral("======> Building 'test-stream'"), false);
+    emit m_adapter->outputReceived(QStringLiteral("gcc -O2 -pipe main.c -o main"), false);
+    emit m_adapter->outputReceived(QStringLiteral("pkgmk: warning: unused variable"), true);
+
+    QVERIFY(logEdit->toPlainText().length() > initialLength);
+    QVERIFY(logEdit->toPlainText().contains(QStringLiteral("Building 'test-stream'")));
+    QVERIFY(logEdit->toPlainText().contains(QStringLiteral("gcc -O2 -pipe main.c -o main")));
+    QVERIFY(logEdit->toPlainText().contains(QStringLiteral("pkgmk: warning: unused variable")));
 }
 
 QTEST_MAIN(TestMainWindow)

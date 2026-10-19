@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "core/build_log_analyzer.h"
 
 #include <QApplication>
 #include <QTableView>
@@ -19,12 +20,19 @@
 #include <QFontDatabase>
 #include <QSet>
 #include <QRegularExpression>
+#include <QProgressBar>
+#include <QMenu>
+#include <QAction>
+#include <QMessageBox>
+#include <QScrollBar>
+#include <QClipboard>
 
 namespace OctoCRUX {
 
 MainWindow::MainWindow(std::shared_ptr<ICruxBackend> backend, QWidget *parent)
     : QMainWindow(parent)
     , m_backend(backend ? std::move(backend) : std::make_shared<CruxAdapter>())
+    , m_planner(std::make_unique<TransactionPlanner>(m_backend))
     , m_packageModel(std::make_unique<PackageModel>(this))
     , m_proxyModel(std::make_unique<PackageFilterProxyModel>(this))
 {
@@ -37,8 +45,15 @@ MainWindow::MainWindow(std::shared_ptr<ICruxBackend> backend, QWidget *parent)
 
     connect(m_backend.get(), &ICruxBackend::outputReceived,
             this, &MainWindow::onBackendOutputReceived);
+    connect(m_backend.get(), &ICruxBackend::progressChanged,
+            this, &MainWindow::onProgressChanged);
+    connect(m_backend.get(), &ICruxBackend::operationFinished,
+            this, &MainWindow::onOperationFinished);
+    connect(m_backend.get(), &ICruxBackend::rejectedConfigsDetected,
+            this, &MainWindow::onRejectedConfigsDetected);
 
     refreshCatalog();
+    updateActionButtons();
 }
 
 PackageModel* MainWindow::packageModel() const {
@@ -55,6 +70,10 @@ QTableView* MainWindow::tableView() const {
 
 QTabWidget* MainWindow::detailTabs() const {
     return m_tabWidget;
+}
+
+QPlainTextEdit* MainWindow::outputLogEdit() const {
+    return m_outputLogEdit;
 }
 
 void MainWindow::setupUi() {
@@ -129,6 +148,46 @@ void MainWindow::setupToolbar() {
 
     connect(m_btnRefresh, &QToolButton::clicked,
             this, &MainWindow::refreshCatalog);
+
+    toolbar->addSeparator();
+
+    // 5. Operations & Execution Buttons
+    m_btnSync = new QToolButton(toolbar);
+    m_btnSync->setText(QStringLiteral("Sync"));
+    m_btnSync->setToolTip(QStringLiteral("Synchronize ports tree via 'ports -u'"));
+    toolbar->addWidget(m_btnSync);
+    connect(m_btnSync, &QToolButton::clicked, this, &MainWindow::onSyncPortsClicked);
+
+    m_btnInstall = new QToolButton(toolbar);
+    m_btnInstall->setText(QStringLiteral("Install"));
+    m_btnInstall->setToolTip(QStringLiteral("Install selected port and dependencies"));
+    toolbar->addWidget(m_btnInstall);
+    connect(m_btnInstall, &QToolButton::clicked, this, &MainWindow::onInstallClicked);
+
+    m_btnRemove = new QToolButton(toolbar);
+    m_btnRemove->setText(QStringLiteral("Remove"));
+    m_btnRemove->setToolTip(QStringLiteral("Remove selected package"));
+    toolbar->addWidget(m_btnRemove);
+    connect(m_btnRemove, &QToolButton::clicked, this, &MainWindow::onRemoveClicked);
+
+    m_btnUpgrade = new QToolButton(toolbar);
+    m_btnUpgrade->setText(QStringLiteral("Upgrade"));
+    m_btnUpgrade->setToolTip(QStringLiteral("Upgrade outdated packages"));
+    toolbar->addWidget(m_btnUpgrade);
+    connect(m_btnUpgrade, &QToolButton::clicked, this, &MainWindow::onUpgradeClicked);
+
+    m_btnLock = new QToolButton(toolbar);
+    m_btnLock->setText(QStringLiteral("Lock"));
+    m_btnLock->setToolTip(QStringLiteral("Toggle lock status for selected package"));
+    toolbar->addWidget(m_btnLock);
+    connect(m_btnLock, &QToolButton::clicked, this, &MainWindow::onToggleLockClicked);
+
+    m_btnCancel = new QToolButton(toolbar);
+    m_btnCancel->setText(QStringLiteral("Cancel"));
+    m_btnCancel->setToolTip(QStringLiteral("Cancel currently running operation"));
+    m_btnCancel->setEnabled(false);
+    toolbar->addWidget(m_btnCancel);
+    connect(m_btnCancel, &QToolButton::clicked, this, &MainWindow::onCancelOperationClicked);
 }
 
 void MainWindow::setupCentralWidget() {
@@ -143,6 +202,11 @@ void MainWindow::setupCentralWidget() {
     m_tableView->setSortingEnabled(true);
     m_tableView->verticalHeader()->setVisible(false);
     m_tableView->verticalHeader()->setDefaultSectionSize(26);
+
+    // Context menu support
+    m_tableView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_tableView, &QTableView::customContextMenuRequested,
+            this, &MainWindow::onCustomContextMenuRequested);
 
     // Initial column widths
     QHeaderView *header = m_tableView->horizontalHeader();
@@ -209,6 +273,14 @@ void MainWindow::setupDetailTabs() {
     m_readmeBrowser->setFont(monoFont);
     m_tabWidget->addTab(m_readmeBrowser, QStringLiteral("Readme"));
 
+    // 6. Output Tab (Live Transaction / Build Log)
+    m_outputLogEdit = new QPlainTextEdit(m_tabWidget);
+    m_outputLogEdit->setReadOnly(true);
+    m_outputLogEdit->setFont(monoFont);
+    m_outputLogEdit->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    m_outputLogEdit->setStyleSheet(QStringLiteral("QPlainTextEdit { background-color: #1e1e1e; color: #d4d4d4; }"));
+    m_tabWidget->addTab(m_outputLogEdit, QStringLiteral("Output"));
+
     clearPortDetails();
 }
 
@@ -217,6 +289,16 @@ void MainWindow::setupStatusBar() {
 
     m_statusSummaryLabel = new QLabel(bar);
     bar->addWidget(m_statusSummaryLabel, 1);
+
+    m_operationPhaseLabel = new QLabel(bar);
+    m_operationPhaseLabel->setStyleSheet(QStringLiteral("color: #1976d2; font-weight: bold; padding-right: 6px;"));
+    bar->addPermanentWidget(m_operationPhaseLabel);
+
+    m_progressBar = new QProgressBar(bar);
+    m_progressBar->setVisible(false);
+    m_progressBar->setMaximumHeight(16);
+    m_progressBar->setMaximumWidth(140);
+    bar->addPermanentWidget(m_progressBar);
 
     m_statusFilterLabel = new QLabel(bar);
     bar->addPermanentWidget(m_statusFilterLabel);
@@ -316,6 +398,7 @@ void MainWindow::onPackageSelectionChanged(const QItemSelection &selected, const
     Q_UNUSED(deselected);
     if (selected.indexes().isEmpty()) {
         clearPortDetails();
+        updateActionButtons();
         return;
     }
 
@@ -326,14 +409,255 @@ void MainWindow::onPackageSelectionChanged(const QItemSelection &selected, const
     } else {
         clearPortDetails();
     }
+    updateActionButtons();
 }
 
 void MainWindow::onBackendOutputReceived(const QString &text, bool isError) {
+    if (m_outputLogEdit) {
+        if (isError) {
+            m_outputLogEdit->appendHtml(QStringLiteral("<span style='color:#ef5350;'>%1</span>").arg(text.toHtmlEscaped()));
+        } else {
+            m_outputLogEdit->appendPlainText(text);
+        }
+        m_outputLogEdit->verticalScrollBar()->setValue(m_outputLogEdit->verticalScrollBar()->maximum());
+    }
+
     if (isError) {
         statusBar()->showMessage(QStringLiteral("Backend error: ") + text, 5000);
     } else {
         statusBar()->showMessage(text, 3000);
     }
+}
+
+void MainWindow::onProgressChanged(int current, int total, const QString &phase) {
+    m_operationInProgress = true;
+    updateActionButtons();
+
+    if (m_progressBar) {
+        m_progressBar->setVisible(true);
+        m_progressBar->setRange(0, total);
+        m_progressBar->setValue(current);
+    }
+    if (m_operationPhaseLabel) {
+        m_operationPhaseLabel->setText(phase);
+    }
+}
+
+void MainWindow::onOperationFinished(int exitCode, OperationErrorKind errorKind, const QString &summary) {
+    m_operationInProgress = false;
+    updateActionButtons();
+
+    if (m_progressBar) {
+        m_progressBar->setVisible(false);
+    }
+    if (m_operationPhaseLabel) {
+        m_operationPhaseLabel->setText(summary);
+    }
+
+    if (m_outputLogEdit) {
+        const QString statusMsg = exitCode == 0
+            ? QStringLiteral("\n[octoCRUX] Operation finished successfully: %1\n").arg(summary)
+            : QStringLiteral("\n[octoCRUX] Operation failed (exit code %1, error: %2): %3\n")
+                .arg(exitCode).arg(BuildLogAnalyzer::errorKindToString(errorKind)).arg(summary);
+        m_outputLogEdit->appendPlainText(statusMsg);
+    }
+
+    if (exitCode == 0) {
+        refreshCatalog();
+    }
+}
+
+void MainWindow::onRejectedConfigsDetected(const QStringList &rejectedFiles) {
+    if (m_outputLogEdit) {
+        m_outputLogEdit->appendHtml(QStringLiteral(
+            "<br/><span style='color:#ffa726; font-weight:bold;'>"
+            "[octoCRUX ALERT] Rejected configuration file(s) found in /var/lib/pkg/rejected:<br/>"
+            "%1</span><br/>"
+        ).arg(rejectedFiles.join(QStringLiteral("<br/>")).toHtmlEscaped()));
+    }
+    statusBar()->showMessage(
+        QStringLiteral("Warning: %1 rejected config(s) found in /var/lib/pkg/rejected!").arg(rejectedFiles.size()),
+        10000
+    );
+}
+
+std::optional<PortInfo> MainWindow::currentSelectedPort() const {
+    if (!m_tableView || !m_tableView->selectionModel()) {
+        return std::nullopt;
+    }
+    const QModelIndexList selected = m_tableView->selectionModel()->selectedRows();
+    if (selected.isEmpty()) {
+        return std::nullopt;
+    }
+    return m_proxyModel->portAtProxyRow(selected.first().row());
+}
+
+void MainWindow::updateActionButtons() {
+    if (!m_btnSync) return;
+
+    if (m_operationInProgress) {
+        m_btnSync->setEnabled(false);
+        m_btnInstall->setEnabled(false);
+        m_btnRemove->setEnabled(false);
+        m_btnUpgrade->setEnabled(false);
+        m_btnLock->setEnabled(false);
+        m_btnRefresh->setEnabled(false);
+        m_btnCancel->setEnabled(true);
+        return;
+    }
+
+    m_btnCancel->setEnabled(false);
+    m_btnSync->setEnabled(true);
+    m_btnRefresh->setEnabled(true);
+
+    auto portOpt = currentSelectedPort();
+    if (portOpt.has_value()) {
+        const PortInfo &port = portOpt.value();
+        const bool isInst = port.isInstalled();
+        m_btnInstall->setEnabled(!isInst);
+        m_btnRemove->setEnabled(isInst);
+        m_btnUpgrade->setEnabled(port.installStatus == InstallStatus::Outdated);
+        m_btnLock->setEnabled(true);
+        m_btnLock->setText(port.lockStatus == LockStatus::Locked ? QStringLiteral("Unlock") : QStringLiteral("Lock"));
+    } else {
+        m_btnInstall->setEnabled(false);
+        m_btnRemove->setEnabled(false);
+        m_btnUpgrade->setEnabled(true);
+        m_btnLock->setEnabled(false);
+        m_btnLock->setText(QStringLiteral("Lock"));
+    }
+}
+
+void MainWindow::onSyncPortsClicked() {
+    if (m_operationInProgress) return;
+    if (m_outputLogEdit && m_tabWidget) {
+        m_tabWidget->setCurrentWidget(m_outputLogEdit);
+    }
+    m_backend->syncPortsTree();
+}
+
+void MainWindow::onInstallClicked() {
+    if (m_operationInProgress) return;
+    auto portOpt = currentSelectedPort();
+    if (!portOpt.has_value()) return;
+
+    TransactionPlan plan = m_planner->planInstall({portOpt->name});
+    if (!plan.isValid()) {
+        QMessageBox::warning(this, QStringLiteral("Installation Error"), plan.errors.join(QLatin1Char('\n')));
+        return;
+    }
+
+    if (m_outputLogEdit && m_tabWidget) {
+        m_tabWidget->setCurrentWidget(m_outputLogEdit);
+    }
+    m_backend->executeTransaction(plan);
+}
+
+void MainWindow::onRemoveClicked() {
+    if (m_operationInProgress) return;
+    auto portOpt = currentSelectedPort();
+    if (!portOpt.has_value()) return;
+
+    TransactionPlan plan = m_planner->planRemove({portOpt->name});
+    if (!plan.isValid()) {
+        QMessageBox::warning(this, QStringLiteral("Removal Error"), plan.errors.join(QLatin1Char('\n')));
+        return;
+    }
+
+    if (plan.hasCriticalWarnings()) {
+        auto ret = QMessageBox::warning(
+            this,
+            QStringLiteral("Critical System Warning"),
+            plan.criticalWarnings.join(QLatin1Char('\n')) + QStringLiteral("\n\nAre you sure you want to proceed?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No
+        );
+        if (ret != QMessageBox::Yes) {
+            return;
+        }
+    }
+
+    if (m_outputLogEdit && m_tabWidget) {
+        m_tabWidget->setCurrentWidget(m_outputLogEdit);
+    }
+    m_backend->executeTransaction(plan);
+}
+
+void MainWindow::onUpgradeClicked() {
+    if (m_operationInProgress) return;
+    auto portOpt = currentSelectedPort();
+    TransactionPlan plan;
+    if (portOpt.has_value() && portOpt->installStatus == InstallStatus::Outdated) {
+        plan = m_planner->planUpgrade({portOpt->name});
+    } else {
+        plan = m_planner->planUpgrade();
+    }
+
+    if (!plan.isValid()) {
+        QMessageBox::warning(this, QStringLiteral("Upgrade Error"), plan.errors.join(QLatin1Char('\n')));
+        return;
+    }
+
+    if (m_outputLogEdit && m_tabWidget) {
+        m_tabWidget->setCurrentWidget(m_outputLogEdit);
+    }
+    m_backend->executeTransaction(plan);
+}
+
+void MainWindow::onToggleLockClicked() {
+    if (m_operationInProgress) return;
+    auto portOpt = currentSelectedPort();
+    if (!portOpt.has_value()) return;
+
+    if (portOpt->lockStatus == LockStatus::Locked) {
+        m_backend->unlockPort(portOpt->name);
+    } else {
+        m_backend->lockPort(portOpt->name);
+    }
+    refreshCatalog();
+}
+
+void MainWindow::onCancelOperationClicked() {
+    m_backend->cancelActiveOperation();
+}
+
+void MainWindow::onCustomContextMenuRequested(const QPoint &pos) {
+    QModelIndex index = m_tableView->indexAt(pos);
+    if (!index.isValid()) return;
+
+    auto portOpt = m_proxyModel->portAtProxyRow(index.row());
+    if (!portOpt.has_value()) return;
+
+    const PortInfo &port = portOpt.value();
+
+    QMenu menu(this);
+    QAction *actInstall = menu.addAction(QStringLiteral("Install '%1'").arg(port.name));
+    actInstall->setEnabled(!port.isInstalled() && !m_operationInProgress);
+    connect(actInstall, &QAction::triggered, this, &MainWindow::onInstallClicked);
+
+    QAction *actRemove = menu.addAction(QStringLiteral("Remove '%1'").arg(port.name));
+    actRemove->setEnabled(port.isInstalled() && !m_operationInProgress);
+    connect(actRemove, &QAction::triggered, this, &MainWindow::onRemoveClicked);
+
+    QAction *actUpgrade = menu.addAction(QStringLiteral("Upgrade '%1'").arg(port.name));
+    actUpgrade->setEnabled(port.installStatus == InstallStatus::Outdated && !m_operationInProgress);
+    connect(actUpgrade, &QAction::triggered, this, &MainWindow::onUpgradeClicked);
+
+    menu.addSeparator();
+
+    const bool isLocked = (port.lockStatus == LockStatus::Locked);
+    QAction *actLock = menu.addAction(isLocked ? QStringLiteral("Unlock '%1'").arg(port.name) : QStringLiteral("Lock '%1'").arg(port.name));
+    actLock->setEnabled(!m_operationInProgress);
+    connect(actLock, &QAction::triggered, this, &MainWindow::onToggleLockClicked);
+
+    menu.addSeparator();
+
+    QAction *actCopyName = menu.addAction(QStringLiteral("Copy Port Name"));
+    connect(actCopyName, &QAction::triggered, this, [&port]() {
+        QGuiApplication::clipboard()->setText(port.name);
+    });
+
+    menu.exec(m_tableView->viewport()->mapToGlobal(pos));
 }
 
 void MainWindow::updateStatusBar() {

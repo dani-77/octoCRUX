@@ -31,8 +31,14 @@ add_library(octocrux_core STATIC
     src/core/aliases_parser.cpp
     src/core/dependency_parser.h
     src/core/dependency_parser.cpp
+    src/core/build_log_analyzer.h
+    src/core/build_log_analyzer.cpp
     src/backend/command_runner.h
     src/backend/command_runner.cpp
+    src/backend/privilege_helper.h
+    src/backend/privilege_helper.cpp
+    src/backend/crux_process_runner.h
+    src/backend/crux_process_runner.cpp
     src/backend/crux_adapter.h
     src/backend/crux_adapter.cpp
     src/model/package_model.h
