@@ -47,9 +47,9 @@ Message shown when a removal is blocked:
 
 Required tests (production fixture plus synthetic cases):
 
-- [ ] Removing `glibc` returns `ProtectedPackage` and no removal argv is generated.
-- [ ] Removing an installed non-core port (e.g. `tint2`) is planned normally.
-- [ ] Updating an outdated core package is still planned (synthetic, since no core port is outdated in the fixture).
-- [ ] A core package overridden by an overlay stays protected (synthetic).
-- [ ] No `core` collection in `prtdir` blocks removal and reports the reason (synthetic).
-- [ ] The hardcoded essential list is gone (grep check in review).
+- [x] Removing `glibc` returns `ProtectedPackage` and no removal argv is generated.
+- [x] Removing an installed non-core port (e.g. `tint2`) is planned normally.
+- [x] Updating an outdated core package is still planned (synthetic, since no core port is outdated in the fixture).
+- [x] A core package overridden by an overlay stays protected (synthetic).
+- [x] No `core` collection in `prtdir` blocks removal and reports the reason (synthetic).
+- [x] The hardcoded essential list is gone (grep check in review).

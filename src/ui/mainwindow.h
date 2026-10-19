@@ -44,6 +44,8 @@ public:
     QTabWidget* detailTabs() const;
     QPlainTextEdit* outputLogEdit() const;
 
+    void checkPrivilegeHelper();
+
 public slots:
     void refreshCatalog();
     void setFilterStatus(StatusFilter status);

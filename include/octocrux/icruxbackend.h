@@ -37,6 +37,13 @@ public:
     virtual bool isCorePackage(const QString &portName) = 0;
     virtual std::optional<QString> coreCollectionPath() = 0;
 
+    // --- Configuration & Paths ---
+    virtual QString rootPrefix() const { return QString(); }
+
+    // --- Privilege helper configuration ---
+    virtual void setPrivilegeHelperType(PrivilegeHelperType type) { Q_UNUSED(type); }
+    virtual PrivilegeHelperType privilegeHelperType() const { return PrivilegeHelperType::None; }
+
     // --- Mutations & Execution ---
     virtual bool executeTransaction(const TransactionPlan &plan) = 0;
     virtual bool syncPortsTree() = 0;

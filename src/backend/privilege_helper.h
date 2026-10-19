@@ -1,17 +1,10 @@
 #pragma once
 
+#include "octocrux/types.h"
 #include <QString>
 #include <QStringList>
 
 namespace OctoCRUX {
-
-enum class PrivilegeHelperType {
-    None,     // Direct unprivileged execution (or already root)
-    QtSudo,   // qt-sudo -d command args... (GUI frontend)
-    Sudo,     // sudo command args...
-    Doas,     // doas command args...
-    Su        // su -c "command args..."
-};
 
 /**
  * @brief Dynamic privilege escalation helper discovery and command composition.

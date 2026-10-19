@@ -209,6 +209,14 @@ void TestPrintfParser::testMalformedLines() {
     // Line with empty name
     const QString noNameLine = QStringLiteral("\t1.0\t1\tyes\t/usr/ports/core\tdesc\tno\t");
     QVERIFY(!PrintfParser::parseLine(noNameLine, PrintfParser::Schema::Fixture8Token).has_value());
+
+    // Line with invalid install status (%i not yes/no/diff)
+    const QString badInstallLine = QStringLiteral("pkg\t1.0\t1\tinvalid\tno\t/usr/ports/core\tyes\tno\tno\tdep1\tdesc");
+    QVERIFY(!PrintfParser::parseLine(badInstallLine, PrintfParser::Schema::Production11Token).has_value());
+
+    // Line with invalid lock status (%l not yes/no)
+    const QString badLockLine = QStringLiteral("pkg\t1.0\t1\tyes\tinvalid\t/usr/ports/core\tyes\tno\tno\tdep1\tdesc");
+    QVERIFY(!PrintfParser::parseLine(badLockLine, PrintfParser::Schema::Production11Token).has_value());
 }
 
 void TestPrintfParser::testCollectionExtraction() {

@@ -171,3 +171,20 @@ target_compile_definitions(test_crux_process_runner PRIVATE
 )
 
 add_test(NAME test_crux_process_runner COMMAND test_crux_process_runner)
+
+# Define test_live_transaction_execution executable
+add_executable(test_live_transaction_execution
+    test_live_transaction_execution.cpp
+)
+
+target_link_libraries(test_live_transaction_execution PRIVATE
+    octocrux_core
+    Qt6::Core
+    Qt6::Test
+)
+
+target_compile_definitions(test_live_transaction_execution PRIVATE
+    OCTOCRUX_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+add_test(NAME test_live_transaction_execution COMMAND test_live_transaction_execution)

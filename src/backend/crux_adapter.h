@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <QMap>
+#include <QQueue>
 
 namespace OctoCRUX {
 
@@ -22,13 +23,18 @@ public:
 
     // --- Configuration and path routing ---
     void setRootPrefix(const QString &prefix);
-    QString rootPrefix() const;
+    QString rootPrefix() const override;
 
     void setPrtGetBinary(const QString &bin);
     QString prtGetBinary() const;
 
     void setPkginfoBinary(const QString &bin);
     QString pkginfoBinary() const;
+
+    void setPortsBinary(const QString &bin);
+    QString portsBinary() const;
+
+    CruxProcessRunner* processRunner() const;
 
     // Invalidate port catalog cache
     void invalidateCache();
@@ -56,8 +62,8 @@ public:
     std::optional<QString> coreCollectionPath() override;
 
     // --- Privilege helper configuration ---
-    void setPrivilegeHelperType(PrivilegeHelperType type);
-    PrivilegeHelperType privilegeHelperType() const;
+    void setPrivilegeHelperType(PrivilegeHelperType type) override;
+    PrivilegeHelperType privilegeHelperType() const override;
 
     // --- Mutations & Execution ---
     bool executeTransaction(const TransactionPlan &plan) override;
@@ -67,19 +73,31 @@ public:
     void cancelActiveOperation() override;
 
 private:
+    struct BatchedOperation {
+        QString program;
+        QStringList arguments;
+        QString description;
+        int currentStep = 1;
+        int totalSteps = 1;
+    };
+
     QString resolvePath(const QString &absolutePath) const;
     QString readTextFile(const QString &resolvedFilePath) const;
     void ensurePortCache();
     void checkRejectedConfigs();
+    void startNextBatchedOperation();
+    void onProcessRunnerFinished(int exitCode, OperationErrorKind errorKind, const QString &summary);
 
     std::shared_ptr<ICommandRunner> m_runner;
     PrivilegeHelper m_privilegeHelper;
     std::unique_ptr<CruxProcessRunner> m_processRunner;
+    QQueue<BatchedOperation> m_pendingOperations;
     bool m_cancellationRequested = false;
 
     QString m_rootPrefix;
     QString m_prtGetBin = QStringLiteral("prt-get");
     QString m_pkginfoBin = QStringLiteral("pkginfo");
+    QString m_portsBin = QStringLiteral("ports");
 
     QList<PortInfo> m_cachedPorts;
     QMap<QString, PortInfo> m_portsByName;

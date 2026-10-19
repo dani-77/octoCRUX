@@ -3,8 +3,10 @@
 #include <sys/statvfs.h>
 #include <QFile>
 #include <QFileInfo>
+#include <QDir>
 #include <QTextStream>
 #include <QQueue>
+#include <QRegularExpression>
 
 namespace OctoCRUX {
 
@@ -13,12 +15,72 @@ TransactionPlanner::TransactionPlanner(std::shared_ptr<ICruxBackend> backend)
 {
 }
 
+QString TransactionPlanner::discoverWorkDirectory(const QString &rootPrefix) {
+    QString confPath = rootPrefix + QStringLiteral("/etc/pkgmk.conf");
+    QFile file(confPath);
+    if (!file.exists()) {
+        confPath = QStringLiteral("/etc/pkgmk.conf");
+        file.setFileName(confPath);
+    }
+
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&file);
+        static const QRegularExpression re(QStringLiteral(R"(^\s*(?:export\s+)?PKGMK_WORK_DIR\s*=\s*["']?([^"'\r\n]+)["']?)"));
+        static const QRegularExpression varSubstRe(QStringLiteral(R"(\$\{PKGMK_WORK_ROOT:-([^}]+)\})"));
+
+        while (!in.atEnd()) {
+            const QString line = in.readLine().trimmed();
+            if (line.startsWith(QLatin1Char('#'))) continue;
+
+            const auto match = re.match(line);
+            if (match.hasMatch()) {
+                QString val = match.captured(1).trimmed();
+
+                // Handle ${PKGMK_WORK_ROOT:-/fallback/path}
+                const auto varMatch = varSubstRe.match(val);
+                if (varMatch.hasMatch()) {
+                    QString envVal = qEnvironmentVariable("PKGMK_WORK_ROOT");
+                    QString replacement = envVal.isEmpty() ? varMatch.captured(1) : envVal;
+                    val.replace(varMatch.captured(0), replacement);
+                }
+
+                // Strip trailing /$name or /${name}
+                val.remove(QRegularExpression(QStringLiteral(R"(/\$\{?name\}?$)")));
+
+                if (!val.isEmpty()) {
+                    return val;
+                }
+            }
+        }
+    }
+
+    // Fallbacks: /var/tmp -> /tmp
+    if (!rootPrefix.isEmpty() && QFileInfo::exists(rootPrefix + QStringLiteral("/var/tmp"))) {
+        return rootPrefix + QStringLiteral("/var/tmp");
+    }
+    if (QFileInfo::exists(QStringLiteral("/var/tmp"))) {
+        return QStringLiteral("/var/tmp");
+    }
+    return QStringLiteral("/tmp");
+}
+
 FilesystemInfo TransactionPlanner::inspectMount(const QString &targetPath) {
     FilesystemInfo info;
     info.targetPath = targetPath;
 
+    // Resolve nearest existing ancestor if targetPath does not exist yet
+    QString existingPath = targetPath;
+    while (!existingPath.isEmpty() && !QFileInfo::exists(existingPath)) {
+        QString parent = QFileInfo(existingPath).dir().path();
+        if (parent == existingPath) break;
+        existingPath = parent;
+    }
+    if (existingPath.isEmpty() || !QFileInfo::exists(existingPath)) {
+        existingPath = QStringLiteral("/");
+    }
+
     struct statvfs stat;
-    if (statvfs(targetPath.toLocal8Bit().constData(), &stat) == 0) {
+    if (statvfs(existingPath.toLocal8Bit().constData(), &stat) == 0) {
         info.availableBytes = static_cast<quint64>(stat.f_bavail) * static_cast<quint64>(stat.f_frsize);
         info.totalBytes = static_cast<quint64>(stat.f_blocks) * static_cast<quint64>(stat.f_frsize);
     }
@@ -35,8 +97,8 @@ FilesystemInfo TransactionPlanner::inspectMount(const QString &targetPath) {
         QString bestMountPoint;
         QString bestFsType;
 
-        const QString canonicalTarget = QFileInfo(targetPath).canonicalFilePath();
-        const QString targetToMatch = canonicalTarget.isEmpty() ? targetPath : canonicalTarget;
+        const QString canonicalTarget = QFileInfo(existingPath).canonicalFilePath();
+        const QString targetToMatch = canonicalTarget.isEmpty() ? existingPath : canonicalTarget;
 
         for (const QString &line : lines) {
             const QString trimmed = line.trimmed();
@@ -71,7 +133,12 @@ FilesystemInfo TransactionPlanner::inspectMount(const QString &targetPath) {
 }
 
 void TransactionPlanner::populateMountInfo(TransactionPlan &plan, const QString &targetPath) {
-    plan.workMountInfo = inspectMount(targetPath);
+    QString path = targetPath;
+    if (path.isEmpty()) {
+        const QString rootPrefix = m_backend ? m_backend->rootPrefix() : QString();
+        path = discoverWorkDirectory(rootPrefix);
+    }
+    plan.workMountInfo = inspectMount(path);
     plan.estimatedWorkSpaceAvailable = plan.workMountInfo.availableBytes;
 }
 
@@ -336,6 +403,23 @@ TransactionPlan TransactionPlanner::planRemove(const QStringList &portNames) {
 
     // SCOFS Guard 3: Calculate full multi-tier cascade of reverse dependents
     plan.reverseDependentsCascade = calculateRecursiveDependentsCascade(plan.reverseDependentsDirect);
+
+    // Alert the user with critical warnings so confirmation dialog is triggered in UI
+    if (!plan.reverseDependentsCascade.isEmpty()) {
+        plan.criticalWarnings.append(
+            QStringLiteral("Removing '%1' will break %2 installed dependent package(s) across the dependency cascade: %3")
+                .arg(portNames.join(QStringLiteral(", ")))
+                .arg(plan.reverseDependentsCascade.size())
+                .arg(plan.reverseDependentsCascade.join(QStringLiteral(", ")))
+        );
+    } else if (!plan.reverseDependentsDirect.isEmpty()) {
+        plan.criticalWarnings.append(
+            QStringLiteral("Removing '%1' will break %2 installed direct dependent package(s): %3")
+                .arg(portNames.join(QStringLiteral(", ")))
+                .arg(plan.reverseDependentsDirect.size())
+                .arg(plan.reverseDependentsDirect.join(QStringLiteral(", ")))
+        );
+    }
 
     return plan;
 }

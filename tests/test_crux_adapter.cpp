@@ -1,4 +1,5 @@
 #include <QTest>
+#include <QSignalSpy>
 #include <QFile>
 #include <QTextStream>
 #include <QMap>
@@ -320,42 +321,40 @@ void TestCruxAdapter::testExecutionAndMutations() {
     TransactionPlan emptyPlan;
     QVERIFY(m_adapter->executeTransaction(emptyPlan));
 
-    // 3. Plan with step executes via runner
+    // 3. Plan with step executes asynchronously via CruxProcessRunner
+    m_adapter->setPrtGetBinary(QStringLiteral("echo"));
     TransactionPlan installPlan;
     TransactionStep step;
     step.portName = QStringLiteral("leaf");
     step.action = TransactionAction::Install;
     installPlan.steps.append(step);
 
-    m_mockRunner->registerResponse(
-        QStringLiteral("prt-get"),
-        {QStringLiteral("depinst"), QStringLiteral("leaf")},
-        {0, QStringLiteral("======> Building 'leaf'\nSuccess\n"), QString()}
-    );
+    QSignalSpy spyTx(m_adapter.get(), &ICruxBackend::operationFinished);
     QVERIFY(m_adapter->executeTransaction(installPlan));
+    QVERIFY(spyTx.wait(2000));
+    QCOMPARE(spyTx.count(), 1);
+    QCOMPARE(spyTx.first().at(0).toInt(), 0);
 
-    // 4. Ports sync
-    m_mockRunner->registerResponse(
-        QStringLiteral("ports"),
-        {QStringLiteral("-u")},
-        {0, QStringLiteral("Synchronizing ports tree...\n"), QString()}
-    );
+    // 4. Ports sync executes asynchronously via CruxProcessRunner
+    m_adapter->setPortsBinary(QStringLiteral("echo"));
+    QSignalSpy spySync(m_adapter.get(), &ICruxBackend::operationFinished);
     QVERIFY(m_adapter->syncPortsTree());
+    QVERIFY(spySync.wait(2000));
+    QCOMPARE(spySync.count(), 1);
+    QCOMPARE(spySync.first().at(0).toInt(), 0);
 
-    // 5. Lock and unlock port
-    m_mockRunner->registerResponse(
-        QStringLiteral("prt-get"),
-        {QStringLiteral("lock"), QStringLiteral("llvm")},
-        {0, QStringLiteral("llvm locked\n"), QString()}
-    );
+    // 5. Lock and unlock port (asynchronous configuration mutation via CruxProcessRunner)
+    QSignalSpy spyLock(m_adapter.get(), &ICruxBackend::operationFinished);
     QVERIFY(m_adapter->lockPort(QStringLiteral("llvm")));
+    QVERIFY(spyLock.wait(2000));
+    QCOMPARE(spyLock.count(), 1);
+    QCOMPARE(spyLock.first().at(0).toInt(), 0);
 
-    m_mockRunner->registerResponse(
-        QStringLiteral("prt-get"),
-        {QStringLiteral("unlock"), QStringLiteral("llvm")},
-        {0, QStringLiteral("llvm unlocked\n"), QString()}
-    );
+    QSignalSpy spyUnlock(m_adapter.get(), &ICruxBackend::operationFinished);
     QVERIFY(m_adapter->unlockPort(QStringLiteral("llvm")));
+    QVERIFY(spyUnlock.wait(2000));
+    QCOMPARE(spyUnlock.count(), 1);
+    QCOMPARE(spyUnlock.first().at(0).toInt(), 0);
 }
 
 void TestCruxAdapter::testCorePackageDetection() {

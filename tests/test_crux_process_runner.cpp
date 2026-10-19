@@ -41,9 +41,9 @@ void TestCruxProcessRunner::testPhaseDetection() {
     QSignalSpy spyFinished(&runner, &CruxProcessRunner::processFinished);
 
     const QString script = QStringLiteral(
-        "echo \"======> Downloading 'test-port'\"\n"
-        "echo \"======> Building 'test-port'\"\n"
-        "echo \"======> Checking footprint\"\n"
+        "echo \"=======> Downloading 'test-port'\"\n"
+        "echo \"=======> Building 'test-port'\"\n"
+        "echo \"=======> Checking footprint\"\n"
     );
 
     const bool started = runner.startProcess(QStringLiteral("sh"), {QStringLiteral("-c"), script});

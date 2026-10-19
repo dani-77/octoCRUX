@@ -36,8 +36,8 @@ public:
     );
 
     /**
-     * @brief Cancels the active process gracefully with SIGTERM/terminate,
-     * escalating to kill() after a 3000ms watchdog timeout if the process does not terminate.
+     * @brief Cancels the active process gracefully with SIGTERM/terminate.
+     * Does not send SIGKILL to prevent leaving orphaned root child build processes.
      */
     void cancel();
 
@@ -50,13 +50,11 @@ private slots:
     void onReadyReadStandardOutput();
     void onReadyReadStandardError();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
-    void onKillTimeout();
 
 private:
     void processOutputBuffer(QByteArray &buffer, bool isError);
 
     std::unique_ptr<QProcess> m_process;
-    QTimer *m_killTimer = nullptr;
     QByteArray m_stdoutBuffer;
     QByteArray m_stderrBuffer;
     QString m_accumulatedLog;

@@ -4,6 +4,7 @@
 #include <QMap>
 #include <QTemporaryDir>
 #include <QDir>
+#include <QSignalSpy>
 
 #include "backend/crux_adapter.h"
 #include "operations/transaction_planner.h"
@@ -209,6 +210,19 @@ void TestTransactionPlanner::testUpgradePlanAllOutdatedWithLocks() {
     QVERIFY(plan.lockedSkipped.contains(QStringLiteral("clang")));
     QVERIFY(plan.lockedSkipped.contains(QStringLiteral("lld")));
     QVERIFY(plan.lockedSkipped.contains(QStringLiteral("compiler-rt")));
+
+    // Subordination verification: plan has 0 steps to execute
+    QCOMPARE(plan.steps.size(), 0);
+
+    // End-to-End: Passing this plan to executeTransaction must execute 0 commands and finish cleanly
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+    const bool executed = m_adapter->executeTransaction(plan);
+    QVERIFY(executed);
+    QCOMPARE(spyFinished.count(), 1);
+    const QList<QVariant> args = spyFinished.takeFirst();
+    QCOMPARE(args.at(0).toInt(), 0);
+    QCOMPARE(args.at(1).value<OperationErrorKind>(), OperationErrorKind::None);
+    QVERIFY(args.at(2).toString().contains(QStringLiteral("No executable actions in transaction plan")));
 }
 
 void TestTransactionPlanner::testRemovalPlanDirectDependents() {
@@ -229,6 +243,11 @@ void TestTransactionPlanner::testRemovalPlanDirectDependents() {
     QVERIFY(plan.reverseDependentsDirect.contains(QStringLiteral("thunderbird-bin")));
     QVERIFY(plan.reverseDependentsDirect.contains(QStringLiteral("glade")));
     QVERIFY(plan.reverseDependentsDirect.contains(QStringLiteral("libnotify")));
+
+    // Critical warning must be populated so the UI confirms before removing packages with dependents
+    QVERIFY(plan.hasCriticalWarnings());
+    QCOMPARE(plan.criticalWarnings.size(), 1);
+    QVERIFY(plan.criticalWarnings.first().contains(QStringLiteral("installed dependent package(s)")));
 
     QCOMPARE(plan.steps.size(), 1);
     QCOMPARE(plan.steps.first().action, TransactionAction::Remove);
@@ -267,6 +286,14 @@ void TestTransactionPlanner::testRemoveGlibcBlockedAsProtectedPackage() {
         "If you really intend to remove it, use 'prt-get remove' or 'pkgrm' from a terminal."
     );
     QVERIFY(planGlibc.errors.contains(expectedMsg));
+
+    // End-to-End: executeTransaction must reject protected packages and emit ProtectedPackage
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+    const bool executed = m_adapter->executeTransaction(planGlibc);
+    QVERIFY(!executed);
+    QCOMPARE(spyFinished.count(), 1);
+    const QList<QVariant> args = spyFinished.takeFirst();
+    QCOMPARE(args.at(1).value<OperationErrorKind>(), OperationErrorKind::ProtectedPackage);
 }
 
 void TestTransactionPlanner::testRemoveNonCorePackageAllowed() {
@@ -417,6 +444,16 @@ void TestTransactionPlanner::testFilesystemMountInspection() {
     QCOMPARE(rootInfo.mountPoint, QStringLiteral("/"));
     QVERIFY(rootInfo.availableBytes > 0);
     QVERIFY(rootInfo.totalBytes > 0);
+
+    // Test empirical work directory discovery from real CRUX 3.8 fixture
+    const QString discovered = TransactionPlanner::discoverWorkDirectory(m_sourceDir + QStringLiteral("/tests/fixtures/crux3.8/files"));
+    QCOMPARE(discovered, QStringLiteral("/usr/ports/work"));
+
+    // Verify inspectMount handles non-existent or sub-path directories by resolving nearest ancestor
+    FilesystemInfo workInfo = TransactionPlanner::inspectMount(discovered);
+    QVERIFY(workInfo.availableBytes > 0);
+    QVERIFY(workInfo.totalBytes > 0);
+    QVERIFY(!workInfo.mountPoint.isEmpty());
 }
 
 void TestTransactionPlanner::testLockTogglePlan() {

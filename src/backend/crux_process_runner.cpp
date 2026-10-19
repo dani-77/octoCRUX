@@ -7,16 +7,13 @@ namespace OctoCRUX {
 
 CruxProcessRunner::CruxProcessRunner(QObject *parent)
     : QObject(parent)
-    , m_killTimer(new QTimer(this))
 {
-    m_killTimer->setSingleShot(true);
-    connect(m_killTimer, &QTimer::timeout, this, &CruxProcessRunner::onKillTimeout);
 }
 
 CruxProcessRunner::~CruxProcessRunner() {
     if (m_process && m_process->state() != QProcess::NotRunning) {
-        m_process->kill();
-        m_process->waitForFinished(500);
+        m_process->terminate();
+        m_process->waitForFinished(1000);
     }
 }
 
@@ -85,18 +82,8 @@ void CruxProcessRunner::cancel() {
     m_wasCancelled = true;
     emit outputReceived(QStringLiteral("\n[octoCRUX] Cancellation requested by user. Terminating process...\n"), true);
 
-    // Request termination (SIGTERM on Linux)
+    // Request graceful termination (SIGTERM on Linux)
     m_process->terminate();
-
-    // Start 3000ms watchdog timer to escalate to SIGKILL if the process does not terminate
-    m_killTimer->start(3000);
-}
-
-void CruxProcessRunner::onKillTimeout() {
-    if (isRunning()) {
-        emit outputReceived(QStringLiteral("\n[octoCRUX] Process did not terminate within timeout. Forcing termination (SIGKILL)...\n"), true);
-        m_process->kill();
-    }
 }
 
 void CruxProcessRunner::processOutputBuffer(QByteArray &buffer, bool isError) {
@@ -113,8 +100,8 @@ void CruxProcessRunner::processOutputBuffer(QByteArray &buffer, bool isError) {
         m_accumulatedLog.append(line);
         m_accumulatedLog.append(QLatin1Char('\n'));
 
-        // Check for phase transitions (e.g. ======> Building '...')
-        static const QRegularExpression phaseRegex(QStringLiteral("^======>\\s+(.*)$"));
+        // Check for phase transitions (pkgutils/pkgmk exact format: =======> Building '...')
+        static const QRegularExpression phaseRegex(QStringLiteral("^=======>\\s+(.*)$"));
         QRegularExpressionMatch match = phaseRegex.match(line);
         if (match.hasMatch()) {
             emit phaseChanged(match.captured(1).trimmed());
@@ -137,10 +124,6 @@ void CruxProcessRunner::onReadyReadStandardError() {
 }
 
 void CruxProcessRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus) {
-    if (m_killTimer->isActive()) {
-        m_killTimer->stop();
-    }
-
     // Flush any remaining buffers
     if (!m_stdoutBuffer.isEmpty()) {
         const QString line = QString::fromUtf8(m_stdoutBuffer);

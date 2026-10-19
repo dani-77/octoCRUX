@@ -57,7 +57,11 @@ void TestPrivilegeHelper::testWrapSu() {
     QCOMPARE(wrapped.size(), 3);
     QCOMPARE(wrapped.at(0), QStringLiteral("su"));
     QCOMPARE(wrapped.at(1), QStringLiteral("-c"));
-    QCOMPARE(wrapped.at(2), QStringLiteral("prt-get remove gtk3"));
+    QCOMPARE(wrapped.at(2), QStringLiteral("'prt-get' 'remove' 'gtk3'"));
+
+    // Verify protection against shell injection and variables
+    const QStringList attack = helper.wrap(QStringLiteral("echo"), {QStringLiteral("$USER; rm -rf /"), QStringLiteral("it's cool")});
+    QCOMPARE(attack.at(2), QStringLiteral("'echo' '$USER; rm -rf /' 'it'\\''s cool'"));
 }
 
 void TestPrivilegeHelper::testWrapNone() {

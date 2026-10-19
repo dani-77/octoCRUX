@@ -27,6 +27,17 @@ enum class LockStatus {
 };
 
 /**
+ * @brief Privilege escalation helper classification.
+ */
+enum class PrivilegeHelperType {
+    None,     // Direct unprivileged execution (or already root)
+    QtSudo,   // qt-sudo -d command args... (GUI frontend)
+    Sudo,     // sudo command args...
+    Doas,     // doas command args...
+    Su        // su -c 'command args...'
+};
+
+/**
  * @brief Categorized error kinds mirroring pkgmk(8) exit codes and CRUX domain errors.
  * Note: prt-get returns generic exit codes (1/255); exact classification under prt-get
  * is derived by inspecting /var/log/pkgbuild/<port>.log.

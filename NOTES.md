@@ -68,6 +68,15 @@
   ├── Direct disk membership check (<coreDir>/<name>) protecting overlay-overridden ports
   ├── Strict GUI removal block (ProtectedPackage error, 0 removal steps, fail-closed safety)
   └── Complete Verification: 10 test suites, 100% passed in 1.13s
+
+[Milestone 12: SCOFS Protocol Resolution — Execution Engine, Batching & Live Streaming]
+  ├── Root Cause: executeTransaction ran via synchronous DefaultCommandRunner (30s timeout, UI freeze)
+  ├── Root Cause: discrete depinst steps triggered repeated qt-sudo elevation prompts per dependency
+  ├── Root Cause: shell injection in su -c and unsafe SIGKILL watchdog orphaning root builds
+  ├── Fix: CruxProcessRunner asynchronously wired to executeTransaction & syncPortsTree
+  ├── Fix: single-invocation transaction batching (qt-sudo -d prt-get depinst <all targets>)
+  ├── Fix: POSIX single-quote escaping in su -c; SIGKILL watchdog eliminated (SIGTERM only)
+  └── Complete Verification: 11 test suites (including 36s real-process live test), 100% green in 37.38s
 ```
 
 ---
@@ -281,6 +290,30 @@ Defined in [`include/octocrux/icruxbackend.h`](include/octocrux/icruxbackend.h):
 
 ---
 
+### 3.12 Milestone 12: SCOFS Protocol Resolution — Execution Engine Wiring, Single-Password Batching, Shell Sanitization, and 40s Live Streaming Verification
+- **Trigger:** Code review by project owner (Daniel Azevedo) on commit `eddc0ab` identifying a severe SCOFS condition where unit tests passed 100% green against mocks while real-world execution on CRUX bare metal would fail.
+- **Root Cause Analysis (The 4 Fatal Disconnects):**
+  1. *Wrong Runner Invocation:* `CruxAdapter::executeTransaction` was executing steps via `m_runner->run(...)` (`DefaultCommandRunner`), leaving `CruxProcessRunner` completely disconnected (`m_processRunner` was null/unused). This produced:
+     - 30-second default timeout killing any compilation taking > 30s.
+     - Blocking UI freeze because `waitForFinished()` blocked the GUI thread.
+     - Complete absence of live streaming in the "Output" tab (output was emitted only after process finish).
+     - Cancel button was a no-op (cancelled `m_processRunner`, which was never started).
+  2. *Password Prompt Multiplicity:* `TransactionPlanner` expanded `quickdep` into individual discrete `depinst` steps per package, each wrapped in `qt-sudo`. Installing `gtk3` on a fresh system would trigger dozens of graphical password prompts instead of a single prompt.
+  3. *Privilege Escalation Vulnerabilities:* `su -c` under `PrivilegeHelper` used naive double quotes vulnerable to shell interpolation (`$`, `` ` ``, `\`, `;`).
+  4. *Watchdog Orphan Risk:* `CruxProcessRunner` escalated to `SIGKILL` after 3000ms. Sending `SIGKILL` to `qt-sudo` or `sudo` causes the helper to vanish while the child compilation build continues running orphaned as root.
+- **Engine Redesign & Implemented Invariants:**
+  1. *Asynchronous Wiring:* `CruxAdapter::executeTransaction` and `syncPortsTree` now instantiate and route strictly through `CruxProcessRunner`. Process launch is non-blocking (`startProcess` returns immediately). Real-time stdout/stderr lines are emitted as `outputReceived` and compilation phases as `progressChanged`. `MainWindow` GUI never blocks.
+  2. *Single-Invocation Transaction Batching:* When `plan.requestedTargets` are provided (e.g. `{"gtk3"}`), the engine issues a single elevated invocation: `qt-sudo -d prt-get depinst target1 target2 ...`. Dependency resolution is delegated entirely to `prt-get` internally. Elevation occurs exactly **once** per transaction.
+  3. *Graceful Signal Termination (No SIGKILL):* Removed `m_killTimer` and `onKillTimeout()`. `cancel()` issues `m_process->terminate()` (`SIGTERM`), allowing elevation helpers and `prt-get` to trap the signal and clean up child builds cleanly.
+  4. *POSIX Single-Quote Escaping for `su -c`:* Each command argument is wrapped in POSIX single quotes (`'...'`), with internal single quotes safely escaped as `'\''`, neutralizing shell expansion and command injection.
+- **Verification via Real-Process Integration Test (`tests/test_live_transaction_execution.cpp`):**
+  - Uses `tests/scripts/fake_slow_prtget.sh` with `SIGTERM` trap handling.
+  - `testExecutionExceeding30Seconds`: Runs simulated build for 34 seconds (exceeding legacy 30s timeout by 4s). Proves that live output lines arrive continuously from second 1 to 34 without arbitrary timeouts and exits 0.
+  - `testGracefulCancellation`: Cancels mid-stream at second 2. Proves that `SIGTERM` arrives at child process, which logs graceful cleanup and terminates promptly within milliseconds without `SIGKILL`.
+  - `testSingleBatchedInvocation`: Verifies via log probe that multi-target plan executes as exactly one command line (`depinst pkg1 pkg2 pkg3`), eliminating multiple password prompts.
+
+---
+
 ## 4. Record of Questions Posed to Owner & User Decisions
 
 | # | Question / Topic | Rationale / Context | User Response / Decision |
@@ -296,6 +329,8 @@ Defined in [`include/octocrux/icruxbackend.h`](include/octocrux/icruxbackend.h):
 | 10 | **Approval to Implement Phase 3 (Transaction Planner & SCOFS Verification)** | Requested explicit permission before coding `TransactionPlanner` and testing CRUX invariants and SCOFS safeguards. | **Approved (\"sim, avança para vermos como fica no SCOFS ok?\")** — Implemented and 100% verified across 64 test functions. |
 | 11 | **Public Git Repository Initialization & Remote Push** | User instructed to create git repository and push all material to GitHub. | **Completed (\"para já cria um repo em https://github.com/dani-77/octoCRUX e coloca lá todo este material\")** — Initialized git on branch `main`, committed full project tree, and pushed to `https://github.com/dani-77/octoCRUX`. |
 | 12 | **Core Package Protection Policy Implementation** | Implemented policy from owner document: strict GUI removal block for core collection packages, dynamic core directory discovery, disk-based check against overlay hiding, removal of hardcoded lists. | **Approved ("wó te dou trabalhinhos de merda, não é? desculpa mas as ideias vêm com demasiada velocidade. sim, aprovo")** — Implemented and 100% verified across 10 test suites. |
+| 13 | **SCOFS Protocol Resolution: Execution Engine, Batching, & Live Integration Test** | Owner reported blocking disconnect in `executeTransaction` (30s timeout, UI freeze, per-package elevation, `su -c` shell escaping). Proposed 4-stage resolution order including simulated slow `prt-get` integration test. | **Approved ("sim...por favor!")** — Implemented and 100% verified across 11 test suites. |
+| 14 | **Execution Engine Peer Review & Audit Hardening** | Addressed findings from two comprehensive audits: probed elevation helper in `main.cpp` (keeping adapter None by default), exact 7-equal regex for pkgmk (`=======>`), strict token validation in `PrintfParser`, dynamic `PKGMK_WORK_DIR` discovery with `/var/tmp`/`/tmp` fallbacks, strict plan subordination in `executeTransaction`, and batched Upgrade-first ordering. Phase 5 work safely stored on branch `wip/phase5`. | **Approved ("Com estas emendas, podes dar-lhe o aval.")** — Implemented and 100% verified across all test suites. |
 
 ---
 
@@ -306,31 +341,33 @@ All tests executed via `ctest` in the project build environment:
 ```text
 Test project /home/dani77/Projectos/octoCRUX/build
       Start  1: test_printf_parser
- 1/10 Test  #1: test_printf_parser ...............   Passed    0.15 sec
+ 1/11 Test  #1: test_printf_parser ................   Passed    0.11 sec
       Start  2: test_aliases_parser
- 2/10 Test  #2: test_aliases_parser ..............   Passed    0.08 sec
+ 2/11 Test  #2: test_aliases_parser ...............   Passed    0.08 sec
       Start  3: test_dependency_parser
- 3/10 Test  #3: test_dependency_parser ...........   Passed    0.08 sec
+ 3/11 Test  #3: test_dependency_parser ............   Passed    0.08 sec
       Start  4: test_crux_adapter
- 4/10 Test  #4: test_crux_adapter ................   Passed    0.13 sec
+ 4/11 Test  #4: test_crux_adapter .................   Passed    0.10 sec
       Start  5: test_package_model
- 5/10 Test  #5: test_package_model ...............   Passed    0.14 sec
+ 5/11 Test  #5: test_package_model ................   Passed    0.10 sec
       Start  6: test_mainwindow
- 6/10 Test  #6: test_mainwindow ..................   Passed    0.17 sec
+ 6/11 Test  #6: test_mainwindow ...................   Passed    0.13 sec
       Start  7: test_transaction_planner
- 7/10 Test  #7: test_transaction_planner .........   Passed    0.12 sec
+ 7/11 Test  #7: test_transaction_planner ..........   Passed    0.10 sec
       Start  8: test_build_log_analyzer
- 8/10 Test  #8: test_build_log_analyzer ..........   Passed    0.08 sec
+ 8/11 Test  #8: test_build_log_analyzer ...........   Passed    0.08 sec
       Start  9: test_privilege_helper
- 9/10 Test  #9: test_privilege_helper ............   Passed    0.08 sec
+ 9/11 Test  #9: test_privilege_helper .............   Passed    0.08 sec
       Start 10: test_crux_process_runner
-10/10 Test #10: test_crux_process_runner .........   Passed    0.09 sec
+10/11 Test #10: test_crux_process_runner ..........   Passed    0.09 sec
+      Start 11: test_live_transaction_execution
+11/11 Test #11: test_live_transaction_execution ...   Passed   38.26 sec
 
-100% tests passed, 0 tests failed out of 10
-Total Test time (real) = 1.13 sec
+100% tests passed, 0 tests failed out of 11
+Total Test time (real) = 39.21 sec
 ```
 
-### Breakdown of Executed Test Suites (10 test suites, 100 passed test runs):
+### Breakdown of Executed Test Suites (11 test suites, 106 passed test runs):
 1. **`test_printf_parser` (11 test functions passed):**
    - `initTestCase`: Reads 2,307 ports from `printf-literaltab.out` using `Schema::Fixture8Token`.
    - `testParseAllCount`: Exact count of 2,307 ports.
@@ -384,16 +421,16 @@ Total Test time (real) = 1.13 sec
    - `testInstallPlanSimplePort`: Tests `a2ps` uninstalled target and verifies topological build ordering (`boehm-gc` -> `paper` -> `a2ps`); validates `acl` where both `acl` and `attr` are already satisfied.
    - `testInstallPlanDependenciesPartitioning`: Validates `gtk3` install plan: verifies that the 118 packages in quickdep are partitioned into actions vs satisfied dependencies (>50 already satisfied), preventing redundant build queues.
    - `testInstallPlanLockedUninstalledError`: Verifies that attempting to compile an explicitly locked uninstalled port (`rust` in `opt`) produces an invalid plan with an explanatory error.
-   - `testUpgradePlanAllOutdatedWithLocks`: Verifies that `planUpgrade()` detects all 4 outdated locked packages (`llvm`, `clang`, `lld`, `compiler-rt`), does not queue them in `toUpdate`, and places them in `lockedSkipped` with warnings.
-   - `testRemovalPlanDirectDependents`: Verifies that removing `gtk3` detects exactly the 7 installed direct dependents (`tint2`, `granite`, `firefox-bin`, `lxappearance`, `thunderbird-bin`, `glade`, `libnotify`).
+   - `testUpgradePlanAllOutdatedWithLocks`: Verifies that `planUpgrade()` detects all 4 outdated locked packages (`llvm`, `clang`, `lld`, `compiler-rt`), does not queue them in `toUpdate`, places them in `lockedSkipped` with warnings, leaves 0 steps in the plan, and executing the plan finishes cleanly with 0 commands executed.
+   - `testRemovalPlanDirectDependents`: Verifies that removing `gtk3` detects exactly the 7 installed direct dependents (`tint2`, `granite`, `firefox-bin`, `lxappearance`, `thunderbird-bin`, `glade`, `libnotify`) and populates `criticalWarnings` to trigger confirmation.
    - `testRemovalPlanRecursiveCascade`: Verifies that multi-level reverse dependents are discovered recursively via BFS cascade (`libnotify` -> `notification-daemon`).
-   - `testRemoveGlibcBlockedAsProtectedPackage`: Verifies that removing `glibc` produces an invalid plan with `ProtectedPackage`, no removal steps/argv, and the exact policy message.
+   - `testRemoveGlibcBlockedAsProtectedPackage`: Verifies that removing `glibc` produces an invalid plan with `ProtectedPackage`, no removal steps/argv, the exact policy message, and `executeTransaction()` immediately rejects it with `OperationErrorKind::ProtectedPackage`.
    - `testRemoveNonCorePackageAllowed`: Verifies that removing non-core packages (`gtk3`) plans normally.
    - `testUpgradeCorePackageAllowed`: Verifies that upgrading an outdated core package is permitted and planned normally.
    - `testCorePackageOverriddenByOverlayStaysProtected`: Verifies that when an overlay overrides `glibc`, disk presence in `core` still blocks removal.
    - `testNoCoreCollectionConfiguredFailsClosed`: Verifies that missing `core` in `/etc/prt-get.conf` fails closed and blocks all removals.
    - `testNonexistentPortHandling`: Verifies that nonexistent ports return invalid plans with informative error messages.
-   - `testFilesystemMountInspection`: Verifies empirical `statvfs` byte calculation and `/proc/self/mountinfo` parsing on `/tmp` and `/`.
+   - `testFilesystemMountInspection`: Verifies empirical `statvfs` byte calculation, work directory discovery from `/etc/pkgmk.conf` (`PKGMK_WORK_DIR`), and `/proc/self/mountinfo` parsing.
    - `testLockTogglePlan`: Verifies discrete step creation for locking and unlocking a port.
    - `cleanupTestCase`: Cleans up resources.
 8. **`test_build_log_analyzer` (14 test functions passed):**
@@ -405,8 +442,15 @@ Total Test time (real) = 1.13 sec
    - Dynamic wrapper argument generation for all backends including `qt-sudo -d`.
 10. **`test_crux_process_runner` (7 test functions passed):**
     - Asynchronous line streaming on stdout and stderr.
-    - Compilation phase tracking (`phaseChanged`).
-    - Graceful process cancellation (`SIGTERM` -> `SIGKILL`).
+    - Compilation phase tracking with exact 7-equal regex (`^=======>\\s+(.*)$`).
+    - Graceful process cancellation via `SIGTERM` (`m_process->terminate()`), strictly eliminating `SIGKILL`.
+11. **`test_live_transaction_execution` (6 test functions passed):**
+    - `initTestCase`: Validates existence and executable permissions of `tests/scripts/fake_slow_prtget.sh`.
+    - `testExecutionExceeding30Seconds`: Runs simulated build for 34 seconds (surpassing legacy 30000ms timeout threshold by 4s), proving live line streaming without arbitrary timeouts and clean exit 0.
+    - `testGracefulCancellation`: User cancellation at second 2 proves that `SIGTERM` reaches the child build process cleanly, terminating in milliseconds.
+    - `testSingleBatchedInvocation`: Multi-target plan (`{"pkg1", "pkg2", "pkg3"}`) verified via log probe to invoke exactly one command line (`depinst pkg1 pkg2 pkg3`), preventing repeated elevation password prompts.
+    - `testMixedUpgradeAndInstallOrdering`: Verified that mixed transactions execute `Upgrade` first (`update ...`), then `Install` (`depinst ...`), with each batched into a single command (requiring two sequential elevations).
+    - `cleanupTestCase`: Cleans up test artifacts.
 
 ---
 
@@ -460,6 +504,9 @@ octoCRUX/
 │   ├── test_build_log_analyzer.cpp                  # Unit tests for BuildLogAnalyzer (14 tests)
 │   ├── test_privilege_helper.cpp                    # Unit tests for PrivilegeHelper (9 tests)
 │   ├── test_crux_process_runner.cpp                 # Unit tests for CruxProcessRunner (7 tests)
+│   ├── test_live_transaction_execution.cpp          # Integration tests for live execution, 30s+ runtime & batching (5 tests)
+│   ├── scripts/
+│   │   └── fake_slow_prtget.sh                      # Test executable script for slow build simulation & SIGTERM handling
 │   └── fixtures/
 │       ├── crux3.8/                                 # Run 1 diagnostic captures (540 files)
 │       │   └── cmd/                                 # Real production fixtures with provenance (.cmd, .out, .err, .rc)
@@ -534,7 +581,17 @@ Authoritative protection policy implemented per [`OctoCRUX — Core package prot
 - UI button and context menu item disabled with tooltip in `MainWindow`.
 - All 5 required policy unit tests passing (100% test coverage).
 
-### 7.6 Next Step: Phase 5 — System Tray Daemon (`octocrux-notifier`) & Settings
+### 7.6 Milestone 12 — SCOFS Protocol Resolution: Execution Engine, Batching & Live Streaming (Completed & Verified)
+Resolved fatal runner disconnect, password prompt multiplicity, and shell injection:
+- Disconnected `m_runner->run` from `executeTransaction` and `syncPortsTree`; wired to asynchronous `CruxProcessRunner`.
+- Eliminated legacy 30000ms timeout on mutations.
+- Multi-target plans are batched into a single command invocation (`depinst pkg1 pkg2 ...`), prompting for password once.
+- Replaced dangerous `SIGKILL` escalation watchdog with graceful `SIGTERM` termination.
+- Applied POSIX single-quote shell escaping to `su -c` in `PrivilegeHelper`.
+- Validated via real-process integration test (`test_live_transaction_execution`) running for 34 seconds with line-by-line live streaming, prompt cancellation handling, and probe-log verified single-command execution.
+- All 11 test suites passing 100% green in 37.38s.
+
+### 7.7 Next Step: Phase 5 — System Tray Daemon (`octocrux-notifier`) & Settings
 1. **System Tray Daemon (`octocrux-notifier`):**
    - Lightweight standalone background tray indicator (`QSystemTrayIcon`).
    - Periodic timer polling for available updates via `ports -u` check or diff comparison against installed packages.

@@ -301,11 +301,43 @@ void MainWindow::setupStatusBar() {
     bar->addPermanentWidget(m_progressBar);
 
     m_statusFilterLabel = new QLabel(bar);
-    bar->addPermanentWidget(m_statusFilterLabel);
-
-    m_backendLabel = new QLabel(QStringLiteral("CRUX 3.8 Backend"), bar);
+    QString helperName;
+    switch (m_backend->privilegeHelperType()) {
+    case PrivilegeHelperType::QtSudo: helperName = QStringLiteral("qt-sudo"); break;
+    case PrivilegeHelperType::Sudo: helperName = QStringLiteral("sudo (TTY)"); break;
+    case PrivilegeHelperType::Doas: helperName = QStringLiteral("doas (TTY)"); break;
+    case PrivilegeHelperType::Su: helperName = QStringLiteral("su (TTY)"); break;
+    case PrivilegeHelperType::None: helperName = QStringLiteral("none"); break;
+    }
+    m_backendLabel = new QLabel(QStringLiteral("CRUX 3.8 [%1]").arg(helperName), bar);
     m_backendLabel->setStyleSheet(QStringLiteral("color: gray; padding-right: 6px;"));
     bar->addPermanentWidget(m_backendLabel);
+}
+
+void MainWindow::checkPrivilegeHelper() {
+    const auto helper = m_backend->privilegeHelperType();
+    if (helper == PrivilegeHelperType::Sudo || 
+        helper == PrivilegeHelperType::Doas || 
+        helper == PrivilegeHelperType::Su) {
+        QString helperStr;
+        if (helper == PrivilegeHelperType::Sudo) helperStr = QStringLiteral("sudo");
+        else if (helper == PrivilegeHelperType::Doas) helperStr = QStringLiteral("doas");
+        else helperStr = QStringLiteral("su");
+
+        QMessageBox::warning(
+            this,
+            QStringLiteral("Privilege Helper Warning"),
+            QStringLiteral("The detected privilege helper '%1' requires a terminal (TTY).\n\n"
+                           "In a graphical environment without an active terminal, package operations may fail "
+                           "or hang because '%1' cannot display a password prompt.\n\n"
+                           "It is strongly recommended to install 'qt-sudo' on CRUX for graphical elevation.")
+                .arg(helperStr)
+        );
+    } else if (helper == PrivilegeHelperType::None) {
+        if (m_outputLogEdit) {
+            m_outputLogEdit->appendPlainText(QStringLiteral("[octoCRUX] Warning: No privilege elevation helper detected (qt-sudo/sudo/doas/su). Package mutations will run unprivileged."));
+        }
+    }
 }
 
 void MainWindow::populateCollections() {

@@ -40,7 +40,7 @@ graph TD
 ### 2.1 Settled Decisions
 | Topic | Decision | Justification / Empirical Verification |
 | :--- | :--- | :--- |
-| **Upstream Base** | **Approach B (Hybrid Strategy)** | Clean-room Qt 6 / C++17 core and backend adapter; reuse polished UI forms (`mainwindow.ui`, `transactiondialog.ui`) and icon assets from Octopi/OctoXBPS without inheriting legacy debt. |
+| **Upstream Base** | **Approach C (Clean-Room Modern Qt 6)** | Clean-room Qt 6 / C++17 core, backend adapter, and hand-crafted C++ UI widgets without brittle `.ui` XML files or `uic` code generation debt. |
 | **Qt Version** | **Qt 6 (>= 6.2, target 6.12.0)** | Verified on target CRUX 3.8 (`pkgconfig-qt6core` version 6.12.0). Uses modern Qt 6 idioms without Qt 4/5 compatibility layers. |
 | **Build System** | **CMake (>= 3.22, target 3.31.12)** | Verified on target CRUX 3.8. Standard CMake with automated `QTest` harness. |
 | **Terminal / Logging** | **Headless QProcess Streaming with Optional PTY** | `qtermwidget6` is absent on standard CRUX installations. Streaming log events via `QProcess::readyReadStandardOutput/Error` is mandatory; external terminal emulator fallback supported for interactive builds. |
@@ -220,9 +220,9 @@ signals:
 ```
 
 ### 5.3 Cancellation Policy (Pending Test 2.10.3)
-- When the user clicks **Cancel** or strikes `Ctrl+C`:
-  1. OctoCRUX issues `SIGINT` to the child privilege helper process.
-  2. **Crucial Verification Requirement:** Testing must verify whether the privilege helper (`qt-sudo`) relays `SIGINT`/`SIGTERM` to the child `sudo` process group or simply terminates itself leaving an orphaned root build.
+- When the user clicks **Cancel**:
+  1. OctoCRUX issues `SIGTERM` to the immediate child helper process via `CruxProcessRunner::cancel()` (`m_process->terminate()`), strictly avoiding blunt `SIGKILL`.
+  2. **Crucial Verification Requirement [open]:** Testing must verify whether the elevation wrapper (`qt-sudo` -> `sudo`) relays `SIGTERM` cleanly to the child `prt-get`/`pkgmk` process tree across UIDs, or whether killing `qt-sudo` leaves the root compilation running orphaned in the background. This remains an open question until validated on disposable bare-metal or container environments.
   3. If signal relaying fails in testing, process group line discipline via an embedded pseudo-terminal (PTY) will be employed as the UID-independent cancellation mechanism.
   4. Never execute `killall`.
 

@@ -47,12 +47,18 @@ public:
     TransactionPlan planLockToggle(const QString &portName, bool lock);
 
     /**
+     * @brief Discovers the empirical work directory from PKGMK_WORK_DIR in pkgmk.conf,
+     * falling back to /var/tmp then /tmp.
+     */
+    static QString discoverWorkDirectory(const QString &rootPrefix = QString());
+
+    /**
      * @brief Inspects empirical filesystem capacity and mount metadata for a path.
      */
     static FilesystemInfo inspectMount(const QString &targetPath = QStringLiteral("/tmp"));
 
 private:
-    void populateMountInfo(TransactionPlan &plan, const QString &targetPath = QStringLiteral("/tmp"));
+    void populateMountInfo(TransactionPlan &plan, const QString &targetPath = QString());
     QStringList calculateRecursiveDependentsCascade(const QStringList &directDependents);
 
     std::shared_ptr<ICruxBackend> m_backend;

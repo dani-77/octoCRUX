@@ -65,7 +65,11 @@ std::optional<PortInfo> PrintfParser::parseLine(const QString &line, Schema sche
         name = tokens[0];
         version = tokens[1];
         release = tokens[2];
-        installStatus = parseInstallStatus(tokens[3]);
+        auto statusOpt = parseInstallStatus(tokens[3]);
+        if (!statusOpt.has_value()) {
+            return std::nullopt;
+        }
+        installStatus = statusOpt.value();
         lockStatus = LockStatus::Unlocked;
         collectionPath = tokens[4];
         description = tokens[5];
@@ -78,8 +82,18 @@ std::optional<PortInfo> PrintfParser::parseLine(const QString &line, Schema sche
         name = tokens[0];
         version = tokens[1];
         release = tokens[2];
-        installStatus = parseInstallStatus(tokens[3]);
-        lockStatus = parseLockStatus(tokens[4]);
+        auto statusOpt = parseInstallStatus(tokens[3]);
+        if (!statusOpt.has_value()) {
+            return std::nullopt;
+        }
+        installStatus = statusOpt.value();
+
+        auto lockOpt = parseLockStatus(tokens[4]);
+        if (!lockOpt.has_value()) {
+            return std::nullopt;
+        }
+        lockStatus = lockOpt.value();
+
         collectionPath = tokens[5];
         hasReadme = (tokens[6].trimmed().compare(QLatin1String("yes"), Qt::CaseInsensitive) == 0);
         hasPreInstall = (tokens[7].trimmed().compare(QLatin1String("yes"), Qt::CaseInsensitive) == 0);
@@ -130,22 +144,29 @@ QString PrintfParser::extractCollectionName(const QString &collectionPath) {
     return path.section(QLatin1Char('/'), -1);
 }
 
-InstallStatus PrintfParser::parseInstallStatus(const QString &statusStr) {
+std::optional<InstallStatus> PrintfParser::parseInstallStatus(const QString &statusStr) {
     const QString s = statusStr.trimmed().toLower();
     if (s == QLatin1String("yes")) {
         return InstallStatus::Installed;
     }
+    if (s == QLatin1String("no")) {
+        return InstallStatus::NotInstalled;
+    }
     if (s == QLatin1String("diff")) {
         return InstallStatus::Outdated;
     }
-    return InstallStatus::NotInstalled;
+    return std::nullopt;
 }
 
-LockStatus PrintfParser::parseLockStatus(const QString &lockStr) {
-    if (lockStr.trimmed().compare(QLatin1String("yes"), Qt::CaseInsensitive) == 0) {
+std::optional<LockStatus> PrintfParser::parseLockStatus(const QString &lockStr) {
+    const QString s = lockStr.trimmed().toLower();
+    if (s == QLatin1String("yes")) {
         return LockStatus::Locked;
     }
-    return LockStatus::Unlocked;
+    if (s == QLatin1String("no")) {
+        return LockStatus::Unlocked;
+    }
+    return std::nullopt;
 }
 
 void PrintfParser::applyLocks(QList<PortInfo> &ports, const QStringList &lockedPortNames) {

@@ -47,14 +47,16 @@ public:
     static QString extractCollectionName(const QString &collectionPath);
 
     /**
-     * @brief Converts raw string to InstallStatus.
+     * @brief Converts raw string to InstallStatus ("yes", "no", "diff").
+     * Returns std::nullopt for any unknown value in strict parsing.
      */
-    static InstallStatus parseInstallStatus(const QString &statusStr);
+    static std::optional<InstallStatus> parseInstallStatus(const QString &statusStr);
 
     /**
-     * @brief Converts raw string to LockStatus.
+     * @brief Converts raw string to LockStatus ("yes", "no").
+     * Returns std::nullopt for any unknown value in strict parsing.
      */
-    static LockStatus parseLockStatus(const QString &lockStr);
+    static std::optional<LockStatus> parseLockStatus(const QString &lockStr);
 
     /**
      * @brief Cross-references and applies locks to a list of ports.

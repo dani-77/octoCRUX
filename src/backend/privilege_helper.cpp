@@ -74,15 +74,13 @@ QStringList PrivilegeHelper::wrapCommand(
         wrapped.append(QStringLiteral("-c"));
         QStringList fullCmd = { program };
         fullCmd.append(arguments);
-        QStringList quotedCmd;
+        QStringList escapedCmd;
         for (const QString &part : fullCmd) {
-            if (part.contains(QLatin1Char(' ')) || part.contains(QLatin1Char('\t'))) {
-                quotedCmd.append(QLatin1Char('\"') + part + QLatin1Char('\"'));
-            } else {
-                quotedCmd.append(part);
-            }
+            QString escaped = part;
+            escaped.replace(QLatin1Char('\''), QStringLiteral("'\\''"));
+            escapedCmd.append(QLatin1Char('\'') + escaped + QLatin1Char('\''));
         }
-        wrapped.append(quotedCmd.join(QLatin1Char(' ')));
+        wrapped.append(escapedCmd.join(QLatin1Char(' ')));
         break;
     }
 
