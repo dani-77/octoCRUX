@@ -362,6 +362,49 @@ QStringList CruxAdapter::queryRecursiveInstallOrder(const QString &portName) {
     return DependencyParser::resolveQuickdepWithAliases(rawOrder, aliases, installedSet);
 }
 
+// --- Core package protection ---
+std::optional<QString> CruxAdapter::coreCollectionPath() {
+    const QString confPath = resolvePath(QStringLiteral("/etc/prt-get.conf"));
+    const QString confContent = readTextFile(confPath);
+    if (confContent.isEmpty()) {
+        return std::nullopt;
+    }
+
+    const QStringList lines = confContent.split(QLatin1Char('\n'));
+    for (const QString &rawLine : lines) {
+        QString line = rawLine.trimmed();
+        if (line.isEmpty() || line.startsWith(QLatin1Char('#'))) {
+            continue;
+        }
+
+        const QStringList tokens = line.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        if (tokens.size() >= 2 && tokens.at(0) == QStringLiteral("prtdir")) {
+            const QString dirPath = tokens.at(1).trimmed();
+            const QString cleaned = QDir::cleanPath(dirPath);
+            const QString collectionName = QFileInfo(cleaned).fileName();
+            if (collectionName.compare(QStringLiteral("core"), Qt::CaseInsensitive) == 0) {
+                return resolvePath(cleaned);
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
+bool CruxAdapter::isCorePackage(const QString &portName) {
+    if (portName.trimmed().isEmpty()) {
+        return false;
+    }
+
+    const auto coreDirOpt = coreCollectionPath();
+    if (!coreDirOpt.has_value()) {
+        return false;
+    }
+
+    const QString candidateDir = coreDirOpt.value() + QLatin1Char('/') + portName.trimmed();
+    return QDir(candidateDir).exists();
+}
+
 // --- Privilege helper configuration ---
 void CruxAdapter::setPrivilegeHelperType(PrivilegeHelperType type) {
     m_privilegeHelper.setHelperType(type);

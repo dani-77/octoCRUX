@@ -43,7 +43,8 @@ enum class OperationErrorKind {
     CompilationError = 8, // pkgmk code 8: Error running build() function
     InstallError = 9,     // pkgmk code 9: Error installing package via pkgadd
     SignatureError = 10,  // signify digital signature or key verification failure
-    DiskSpaceError = 11   // ENOSPC on work directory mount
+    DiskSpaceError = 11,  // ENOSPC on work directory mount
+    ProtectedPackage = 12 // Core package removal blocked by protection policy
 };
 
 /**
@@ -162,8 +163,9 @@ struct TransactionPlan {
     QStringList reverseDependentsCascade;  // Complete recursive cascade of affected installed ports
 
     // Safety and diagnostics
-    QStringList criticalWarnings;          // Non-blocking critical warnings (e.g. core system package removal)
-    QStringList errors;                    // Blocking errors preventing plan execution (e.g. missing port)
+    QStringList criticalWarnings;          // Non-blocking critical warnings
+    QStringList protectedPackagesBlocked;  // Core packages requested for removal but blocked
+    QStringList errors;                    // Blocking errors preventing plan execution (e.g. missing port, protected package)
 
     // Filesystem inspection
     FilesystemInfo workMountInfo;
@@ -174,6 +176,7 @@ struct TransactionPlan {
     // Convenience helpers
     bool isValid() const { return errors.isEmpty(); }
     bool hasCriticalWarnings() const { return !criticalWarnings.isEmpty(); }
+    bool hasProtectedPackages() const { return !protectedPackagesBlocked.isEmpty(); }
     int stepCount() const { return steps.size(); }
 };
 

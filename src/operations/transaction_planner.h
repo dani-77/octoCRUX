@@ -51,16 +51,6 @@ public:
      */
     static FilesystemInfo inspectMount(const QString &targetPath = QStringLiteral("/tmp"));
 
-    /**
-     * @brief Identifies whether a port is a critical CRUX system package.
-     */
-    static bool isCriticalSystemPackage(const QString &portName);
-
-    /**
-     * @brief Returns the set of protected critical system packages.
-     */
-    static const QSet<QString>& criticalSystemPackages();
-
 private:
     void populateMountInfo(TransactionPlan &plan, const QString &targetPath = QStringLiteral("/tmp"));
     QStringList calculateRecursiveDependentsCascade(const QStringList &directDependents);

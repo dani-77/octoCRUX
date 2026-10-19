@@ -13,35 +13,6 @@ TransactionPlanner::TransactionPlanner(std::shared_ptr<ICruxBackend> backend)
 {
 }
 
-const QSet<QString>& TransactionPlanner::criticalSystemPackages() {
-    static const QSet<QString> critical = {
-        QStringLiteral("glibc"),
-        QStringLiteral("pkgutils"),
-        QStringLiteral("prt-get"),
-        QStringLiteral("coreutils"),
-        QStringLiteral("bash"),
-        QStringLiteral("binutils"),
-        QStringLiteral("gcc"),
-        QStringLiteral("sed"),
-        QStringLiteral("grep"),
-        QStringLiteral("gawk"),
-        QStringLiteral("tar"),
-        QStringLiteral("xz"),
-        QStringLiteral("zstd"),
-        QStringLiteral("make"),
-        QStringLiteral("linux"),
-        QStringLiteral("findutils"),
-        QStringLiteral("shadow"),
-        QStringLiteral("sysvinit"),
-        QStringLiteral("util-linux")
-    };
-    return critical;
-}
-
-bool TransactionPlanner::isCriticalSystemPackage(const QString &portName) {
-    return criticalSystemPackages().contains(portName);
-}
-
 FilesystemInfo TransactionPlanner::inspectMount(const QString &targetPath) {
     FilesystemInfo info;
     info.targetPath = targetPath;
@@ -307,6 +278,13 @@ TransactionPlan TransactionPlanner::planRemove(const QStringList &portNames) {
         return plan;
     }
 
+    // SCOFS Policy: Core collection discovery & fail-closed protection
+    const auto coreDirOpt = m_backend->coreCollectionPath();
+    if (!coreDirOpt.has_value()) {
+        plan.errors.append(QStringLiteral("No 'core' collection is configured in /etc/prt-get.conf. Removals are blocked to prevent accidental removal of core system packages."));
+        return plan;
+    }
+
     plan.requestedTargets = portNames;
 
     for (const QString &target : portNames) {
@@ -324,17 +302,21 @@ TransactionPlan TransactionPlanner::planRemove(const QStringList &portNames) {
             continue;
         }
 
-        // SCOFS Guard 1: Critical system package safeguard
-        if (isCriticalSystemPackage(target)) {
-            plan.criticalWarnings.append(
-                QStringLiteral("WARNING: '%1' is a critical CRUX system package. Removing it will compromise system stability or render it unbootable!")
+        // SCOFS Policy: Core package protection rule
+        // Check membership in the core collection directly on disk, not winning %p.
+        // Removals of core packages are strictly blocked in OctoCRUX.
+        if (m_backend->isCorePackage(target)) {
+            plan.protectedPackagesBlocked.append(target);
+            plan.errors.append(
+                QStringLiteral("%1 belongs to the CRUX core collection. OctoCRUX does not remove core packages, because doing so can leave the system unable to run programs or boot. If you really intend to remove it, use 'prt-get remove' or 'pkgrm' from a terminal.")
                 .arg(target)
             );
+            continue; // Never produce a remove step/argv for a protected package!
         }
 
         plan.toRemove.append(target);
 
-        // SCOFS Guard 2: Direct installed dependents detection
+        // Direct installed dependents detection
         const QStringList direct = m_backend->queryDirectInstalledDependents(target);
         for (const QString &d : direct) {
             if (!plan.reverseDependentsDirect.contains(d)) {

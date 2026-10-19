@@ -2,6 +2,8 @@
 #include <QFile>
 #include <QTextStream>
 #include <QMap>
+#include <QTemporaryDir>
+#include <QDir>
 
 #include "backend/crux_adapter.h"
 #include "operations/transaction_planner.h"
@@ -47,7 +49,11 @@ private slots:
     void testUpgradePlanAllOutdatedWithLocks();
     void testRemovalPlanDirectDependents();
     void testRemovalPlanRecursiveCascade();
-    void testCriticalSystemPackageSafeguard();
+    void testRemoveGlibcBlockedAsProtectedPackage();
+    void testRemoveNonCorePackageAllowed();
+    void testUpgradeCorePackageAllowed();
+    void testCorePackageOverriddenByOverlayStaysProtected();
+    void testNoCoreCollectionConfiguredFailsClosed();
     void testNonexistentPortHandling();
     void testFilesystemMountInspection();
     void testLockTogglePlan();
@@ -126,6 +132,12 @@ void TestTransactionPlanner::initTestCase() {
     depNotifyRes.exitCode = 0;
     depNotifyRes.stdOut = QStringLiteral("notification-daemon\n");
     m_runner->registerResponse(QStringLiteral("prt-get"), {QStringLiteral("dependent"), QStringLiteral("libnotify")}, depNotifyRes);
+
+    // 8. Mock prt-get dependent for glibc
+    CommandResult depGlibcRes;
+    depGlibcRes.exitCode = 0;
+    depGlibcRes.stdOut = QStringLiteral("libxcrypt\n");
+    m_runner->registerResponse(QStringLiteral("prt-get"), {QStringLiteral("dependent"), QStringLiteral("glibc")}, depGlibcRes);
 
     // Initialize CruxAdapter with fixture prefix
     m_adapter = std::make_shared<CruxAdapter>(m_runner);
@@ -233,24 +245,155 @@ void TestTransactionPlanner::testRemovalPlanRecursiveCascade() {
     QVERIFY(plan.reverseDependentsCascade.contains(QStringLiteral("notification-daemon")));
 }
 
-void TestTransactionPlanner::testCriticalSystemPackageSafeguard() {
-    // Attempting to remove glibc
+void TestTransactionPlanner::testRemoveGlibcBlockedAsProtectedPackage() {
+    // 1. Attempting to remove glibc (core collection port)
     TransactionPlan planGlibc = m_planner->planRemove({QStringLiteral("glibc")});
-    QVERIFY(planGlibc.hasCriticalWarnings());
-    QVERIFY(planGlibc.criticalWarnings.first().contains(QStringLiteral("critical CRUX system package")));
 
-    // Attempting to remove pkgutils
-    TransactionPlan planPkgutils = m_planner->planRemove({QStringLiteral("pkgutils")});
-    QVERIFY(planPkgutils.hasCriticalWarnings());
-    QVERIFY(planPkgutils.criticalWarnings.first().contains(QStringLiteral("critical CRUX system package")));
+    // Plan must be invalid (blocked)
+    QVERIFY(!planGlibc.isValid());
 
-    // Attempting to remove prt-get
-    TransactionPlan planPrtGet = m_planner->planRemove({QStringLiteral("prt-get")});
-    QVERIFY(planPrtGet.hasCriticalWarnings());
+    // Must be recorded in protectedPackagesBlocked
+    QVERIFY(planGlibc.hasProtectedPackages());
+    QVERIFY(planGlibc.protectedPackagesBlocked.contains(QStringLiteral("glibc")));
 
-    // Attempting to remove a regular package like a2ps
-    TransactionPlan planA2ps = m_planner->planRemove({QStringLiteral("a2ps")});
-    QVERIFY(!planA2ps.hasCriticalWarnings());
+    // Planner must NEVER produce a remove step/argv for a protected package
+    QVERIFY(planGlibc.steps.isEmpty());
+    QVERIFY(!planGlibc.toRemove.contains(QStringLiteral("glibc")));
+
+    // User-facing message must match the policy text exactly
+    const QString expectedMsg = QStringLiteral(
+        "glibc belongs to the CRUX core collection. OctoCRUX does not remove core packages, "
+        "because doing so can leave the system unable to run programs or boot. "
+        "If you really intend to remove it, use 'prt-get remove' or 'pkgrm' from a terminal."
+    );
+    QVERIFY(planGlibc.errors.contains(expectedMsg));
+}
+
+void TestTransactionPlanner::testRemoveNonCorePackageAllowed() {
+    // Attempting to remove an installed non-core package (gtk3 in opt)
+    TransactionPlan plan = m_planner->planRemove({QStringLiteral("gtk3")});
+
+    QVERIFY(plan.isValid());
+    QVERIFY(!plan.hasProtectedPackages());
+    QCOMPARE(plan.toRemove.size(), 1);
+    QCOMPARE(plan.toRemove.first(), QStringLiteral("gtk3"));
+    QCOMPARE(plan.steps.size(), 1);
+    QCOMPARE(plan.steps.first().action, TransactionAction::Remove);
+    QCOMPARE(plan.steps.first().portName, QStringLiteral("gtk3"));
+}
+
+void TestTransactionPlanner::testUpgradeCorePackageAllowed() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    const QString etcDir = tempDir.path() + QStringLiteral("/etc");
+    QDir().mkpath(etcDir);
+    const QString corePortsDir = tempDir.path() + QStringLiteral("/usr/ports/core");
+    QDir().mkpath(corePortsDir + QStringLiteral("/glibc"));
+
+    QFile confFile(etcDir + QStringLiteral("/prt-get.conf"));
+    QVERIFY(confFile.open(QIODevice::WriteOnly | QIODevice::Text));
+    QTextStream out(&confFile);
+    out << "prtdir /usr/ports/core\n";
+    confFile.close();
+
+    auto tempRunner = std::make_shared<MockRunnerForPlanner>();
+    // Synthetic core port glibc with %i="diff" -> InstallStatus::Outdated
+    const QString glibcOutdatedLine = QStringLiteral(
+        "glibc\t2.41\t1\tdiff\tno\t/usr/ports/core/glibc\tcore\tno\tyes\t\tGNU C Library\n"
+    );
+    tempRunner->registerResponse(
+        QStringLiteral("prt-get"),
+        {QStringLiteral("printf"), QString::fromLatin1(PrintfParser::PRODUCTION_FORMAT)},
+        {0, glibcOutdatedLine, QString()}
+    );
+
+    auto tempAdapter = std::make_shared<CruxAdapter>(tempRunner);
+    tempAdapter->setRootPrefix(tempDir.path());
+
+    TransactionPlanner tempPlanner(tempAdapter);
+    TransactionPlan plan = tempPlanner.planUpgrade({QStringLiteral("glibc")});
+
+    // Updating a core package must be allowed and planned normally
+    QVERIFY(plan.isValid());
+    QVERIFY(!plan.hasProtectedPackages());
+    QCOMPARE(plan.steps.size(), 1);
+    QCOMPARE(plan.steps.first().action, TransactionAction::Upgrade);
+    QCOMPARE(plan.steps.first().portName, QStringLiteral("glibc"));
+}
+
+void TestTransactionPlanner::testCorePackageOverriddenByOverlayStaysProtected() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    const QString etcDir = tempDir.path() + QStringLiteral("/etc");
+    QDir().mkpath(etcDir);
+
+    const QString overlayPortsDir = tempDir.path() + QStringLiteral("/usr/ports/d77crux");
+    const QString corePortsDir = tempDir.path() + QStringLiteral("/usr/ports/core");
+    QDir().mkpath(overlayPortsDir + QStringLiteral("/glibc"));
+    QDir().mkpath(corePortsDir + QStringLiteral("/glibc"));
+
+    // Write prt-get.conf with canonical paths: overlay before core
+    QFile confFile(etcDir + QStringLiteral("/prt-get.conf"));
+    QVERIFY(confFile.open(QIODevice::WriteOnly | QIODevice::Text));
+    QTextStream out(&confFile);
+    out << "prtdir /usr/ports/d77crux\n";
+    out << "prtdir /usr/ports/core\n";
+    confFile.close();
+
+    auto tempRunner = std::make_shared<MockRunnerForPlanner>();
+    // Mock printf where winning port reports collection "d77crux"
+    const QString glibcOverlayLine = QStringLiteral(
+        "glibc\t2.40\t1\tyes\tno\t/usr/ports/d77crux/glibc\td77crux\tno\tyes\t\tGNU C Library\n"
+    );
+    tempRunner->registerResponse(
+        QStringLiteral("prt-get"),
+        {QStringLiteral("printf"), QString::fromLatin1(PrintfParser::PRODUCTION_FORMAT)},
+        {0, glibcOverlayLine, QString()}
+    );
+
+    auto tempAdapter = std::make_shared<CruxAdapter>(tempRunner);
+    tempAdapter->setRootPrefix(tempDir.path());
+
+    // isCorePackage must check disk presence in core collection, ignoring overlay winning collection
+    QVERIFY(tempAdapter->isCorePackage(QStringLiteral("glibc")));
+
+    TransactionPlanner tempPlanner(tempAdapter);
+    TransactionPlan plan = tempPlanner.planRemove({QStringLiteral("glibc")});
+
+    // Removal must be blocked!
+    QVERIFY(!plan.isValid());
+    QVERIFY(plan.hasProtectedPackages());
+    QVERIFY(plan.steps.isEmpty());
+    QVERIFY(plan.errors.first().contains(QStringLiteral("belongs to the CRUX core collection")));
+}
+
+void TestTransactionPlanner::testNoCoreCollectionConfiguredFailsClosed() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    const QString etcDir = tempDir.path() + QStringLiteral("/etc");
+    QDir().mkpath(etcDir);
+
+    // Write prt-get.conf with NO core collection
+    QFile confFile(etcDir + QStringLiteral("/prt-get.conf"));
+    QVERIFY(confFile.open(QIODevice::WriteOnly | QIODevice::Text));
+    QTextStream out(&confFile);
+    out << "prtdir /usr/ports/opt\n";
+    confFile.close();
+
+    auto tempRunner = std::make_shared<MockRunnerForPlanner>();
+    auto tempAdapter = std::make_shared<CruxAdapter>(tempRunner);
+    tempAdapter->setRootPrefix(tempDir.path());
+
+    TransactionPlanner tempPlanner(tempAdapter);
+    TransactionPlan plan = tempPlanner.planRemove({QStringLiteral("gtk3")});
+
+    // Fails closed: removals blocked because no core collection is configured
+    QVERIFY(!plan.isValid());
+    QVERIFY(plan.steps.isEmpty());
+    QVERIFY(plan.errors.first().contains(QStringLiteral("No 'core' collection is configured in /etc/prt-get.conf")));
 }
 
 void TestTransactionPlanner::testNonexistentPortHandling() {

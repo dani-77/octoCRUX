@@ -33,6 +33,10 @@ public:
     virtual QStringList queryAllDeclaredDependents(const QString &portName) = 0;
     virtual QStringList queryRecursiveInstallOrder(const QString &portName) = 0;
 
+    // --- Core package protection ---
+    virtual bool isCorePackage(const QString &portName) = 0;
+    virtual std::optional<QString> coreCollectionPath() = 0;
+
     // --- Mutations & Execution ---
     virtual bool executeTransaction(const TransactionPlan &plan) = 0;
     virtual bool syncPortsTree() = 0;

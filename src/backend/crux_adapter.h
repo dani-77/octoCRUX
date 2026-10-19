@@ -51,6 +51,10 @@ public:
     QStringList queryAllDeclaredDependents(const QString &portName) override;
     QStringList queryRecursiveInstallOrder(const QString &portName) override;
 
+    // --- Core package protection ---
+    bool isCorePackage(const QString &portName) override;
+    std::optional<QString> coreCollectionPath() override;
+
     // --- Privilege helper configuration ---
     void setPrivilegeHelperType(PrivilegeHelperType type);
     PrivilegeHelperType privilegeHelperType() const;

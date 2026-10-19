@@ -50,6 +50,7 @@ private slots:
     void testReadPortFile();
     void testPkginfoFilesAndOwner();
     void testExecutionAndMutations();
+    void testCorePackageDetection();
 
 private:
     QString readFile(const QString &filePath);
@@ -355,6 +356,21 @@ void TestCruxAdapter::testExecutionAndMutations() {
         {0, QStringLiteral("llvm unlocked\n"), QString()}
     );
     QVERIFY(m_adapter->unlockPort(QStringLiteral("llvm")));
+}
+
+void TestCruxAdapter::testCorePackageDetection() {
+    auto corePath = m_adapter->coreCollectionPath();
+    QVERIFY(corePath.has_value());
+    QVERIFY(corePath.value().endsWith(QStringLiteral("/usr/ports/core")));
+
+    // glibc exists in core
+    QVERIFY(m_adapter->isCorePackage(QStringLiteral("glibc")));
+
+    // gtk3 exists in opt, not core
+    QVERIFY(!m_adapter->isCorePackage(QStringLiteral("gtk3")));
+
+    // Non-existent package
+    QVERIFY(!m_adapter->isCorePackage(QStringLiteral("nonexistent_package")));
 }
 
 QTEST_MAIN(TestCruxAdapter)

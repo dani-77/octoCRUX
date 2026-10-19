@@ -138,7 +138,7 @@ In accordance with [RESEARCH.md](RESEARCH.md) and the SCOFS protocol in [AGENTS.
   2. Locked package suppression in `sysup`: `prt-get diff` silently hides locked packages (`llvm`, `clang`, `lld`, `compiler-rt`). `planUpgrade` catches all 4 outdated locked packages and puts them in `lockedSkipped` with explanatory warnings.
   3. Locked uninstalled ports (e.g. `rust` in `opt` to prevent 6-hour builds when `rust-bin` is used) are blocked from build attempts unless satisfied by an installed alias provider.
   4. Multi-tier recursive reverse dependents cascade: Standard `dependent` only checks direct 1-level dependents. `TransactionPlanner::calculateRecursiveDependentsCascade` executes a BFS cascade to compute the complete chain of broken installed packages.
-  5. Core CRUX packages (`glibc`, `pkgutils`, `prt-get`, `coreutils`, etc.) trigger critical system warnings upon removal.
+  5. Core CRUX package removal protection (superseded by Section 2.13): Previously used a hardcoded list; now strictly governed by the disk-checked Core Package Protection Policy.
 
 ### 2.12 Linux `/proc` Pseudo-filesystem Zero-Size Quirk & Mount Inspection
 * **Status: [verified]**
@@ -146,6 +146,22 @@ In accordance with [RESEARCH.md](RESEARCH.md) and the SCOFS protocol in [AGENTS.
   1. Reading `/proc/self/mountinfo` via `QTextStream::atEnd()` or `QFile::atEnd()` fails because kernel `stat(2)` reports `st_size = 0` for `/proc` pseudo-files, causing `atEnd()` to return true before any lines are read.
   2. Direct byte reading with `file.readAll()` completely bypasses the zero-size quirk and reliably provides the mount point and filesystem type (`tmpfs` vs disk) across Linux kernels.
   3. Available disk headroom is obtained factually via `statvfs(2)` (`f_bavail * f_frsize`).
+
+### 2.13 Core Package Protection Policy & Fail-Closed Safety
+* **Status: [verified]** (Fixtures: `printf-production-11token.out`, `tests/fixtures/crux3.8/cmd/`)
+* **Reference Document:** [`OctoCRUX — Core package protection policy.md`](OctoCRUX%20%E2%80%94%20Core%20package%20protection%20policy.md) (Daniel Azevedo, 2026-10-19)
+* **Empirical Facts on CRUX 3.8 Bare Metal:**
+  1. 126 ports in `core` collection. 126 of 126 installed on sysvd77.
+  2. In the entire 2,307-port tree, only 1 port (`libxcrypt`) declares `glibc` in `%e`.
+  3. 68 of 126 core ports have empty `%e`. Core ports assume the core foundation is present.
+  4. Any dependency-count heuristic would classify `glibc` as virtually unused and safe to remove.
+* **Authoritative Protection Invariants Implemented:**
+  1. **Strict GUI Removal Block:** OctoCRUX never removes a package belonging to the CRUX core collection. No typed-confirmation or override inside the GUI. Escape hatch is external only (`prt-get remove` or `pkgrm` in a terminal).
+  2. **Dynamic Collection Discovery (*Fail-Closed*):** Discover the `core` collection directory by parsing `prtdir` directives in `/etc/prt-get.conf` and selecting the collection whose name/basename is `core`. If no `core` collection is configured, fail closed: block all removals and report why.
+  3. **Check Membership on Disk:** A core package overridden by an overlay (e.g. `d77crux/glibc`) reports the overlay's `%p` and `%R`, and would silently lose protection if checked via winning port collection. Verification must inspect whether directory `<core collection>/<name>` exists on disk.
+  4. **Single Source of Truth:** Brittle hardcoded lists (`criticalSystemPackages()`) are completely eliminated.
+  5. **Outcome:** Blocked removals return `OperationErrorKind::ProtectedPackage`, populate `protectedPackagesBlocked`, add zero removal steps/argv to the plan, and emit the policy message.
+  6. **UI Disabled Actions:** `MainWindow` disables the Remove button and context menu item with the tooltip `"Core packages cannot be removed in OctoCRUX"`.
 
 ---
 

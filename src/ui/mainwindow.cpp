@@ -514,14 +514,21 @@ void MainWindow::updateActionButtons() {
     if (portOpt.has_value()) {
         const PortInfo &port = portOpt.value();
         const bool isInst = port.isInstalled();
+        const bool isCore = m_backend->isCorePackage(port.name);
         m_btnInstall->setEnabled(!isInst);
-        m_btnRemove->setEnabled(isInst);
+        m_btnRemove->setEnabled(isInst && !isCore);
+        if (isCore) {
+            m_btnRemove->setToolTip(QStringLiteral("Core packages cannot be removed in OctoCRUX"));
+        } else {
+            m_btnRemove->setToolTip(QStringLiteral("Remove selected package"));
+        }
         m_btnUpgrade->setEnabled(port.installStatus == InstallStatus::Outdated);
         m_btnLock->setEnabled(true);
         m_btnLock->setText(port.lockStatus == LockStatus::Locked ? QStringLiteral("Unlock") : QStringLiteral("Lock"));
     } else {
         m_btnInstall->setEnabled(false);
         m_btnRemove->setEnabled(false);
+        m_btnRemove->setToolTip(QStringLiteral("Remove selected package"));
         m_btnUpgrade->setEnabled(true);
         m_btnLock->setEnabled(false);
         m_btnLock->setText(QStringLiteral("Lock"));
@@ -635,8 +642,12 @@ void MainWindow::onCustomContextMenuRequested(const QPoint &pos) {
     actInstall->setEnabled(!port.isInstalled() && !m_operationInProgress);
     connect(actInstall, &QAction::triggered, this, &MainWindow::onInstallClicked);
 
+    const bool isCore = m_backend->isCorePackage(port.name);
     QAction *actRemove = menu.addAction(QStringLiteral("Remove '%1'").arg(port.name));
-    actRemove->setEnabled(port.isInstalled() && !m_operationInProgress);
+    actRemove->setEnabled(port.isInstalled() && !isCore && !m_operationInProgress);
+    if (isCore) {
+        actRemove->setToolTip(QStringLiteral("Core packages cannot be removed in OctoCRUX"));
+    }
     connect(actRemove, &QAction::triggered, this, &MainWindow::onRemoveClicked);
 
     QAction *actUpgrade = menu.addAction(QStringLiteral("Upgrade '%1'").arg(port.name));
