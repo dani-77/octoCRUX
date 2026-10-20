@@ -163,6 +163,40 @@ In accordance with [RESEARCH.md](RESEARCH.md) and the SCOFS protocol in [AGENTS.
   5. **Outcome:** Blocked removals return `OperationErrorKind::ProtectedPackage`, populate `protectedPackagesBlocked`, add zero removal steps/argv to the plan, and emit the policy message.
   6. **UI Disabled Actions:** `MainWindow` disables the Remove button and context menu item with the tooltip `"Core packages cannot be removed in OctoCRUX"`.
 
+### 2.14 `pkgmk` Exit Codes, Messages, Build Logs & `prt-get --test` (Execution Capture)
+* **Status: [verified on test machine]** (Capture: `octocrux-exec-capture-20261020-214106.tar.gz` from `tools/crux_capture_execution.sh`, sysvd77 / T480s, 2026-10-20; failure fixtures: `tests/fixtures/crux3.8/pkgmk-failures/` from `tools/gen_pkgmk_failure_logs.sh`)
+* **`pkgmk` (pkgutils 5.40.12) exit codes as shipped:**
+  1. Defined: `E_GENERAL=1`, `E_PKGFILE=2`, `E_DIR_PERM=3`, `E_DOWNLOAD=4`, `E_UNPACK=5`, `E_MD5=6`, `E_FOOTPRINT=7`, `E_BUILD=8`, `E_INSTALL=9`, **`E_SIGNATURE=10`** (not in the man page's 0–9 list).
+  2. **`E_FOOTPRINT`, `E_BUILD` and `E_INSTALL` are defined but never used.** Footprint mismatch, `build()` failure and `pkgadd` failure all `exit 1`, as does `interrupted()`. Reproduced: `footprint.rc`, `build-fail.rc`, `interrupt.rc` are all `1`.
+  3. Codes actually emitted: 0, 1, 2, 3, 4, 5, 6, 10.
+  4. `prt-get(8)` RETURN VALUE: "0 on success and a non-zero value otherwise (exact value -> meaning mapping to be determined...)". Whether prt-get forwards pkgmk's code is **[open]** (no prt-get failure exit code captured yet).
+  5. **Rule:** `BuildLogAnalyzer` never maps an exit code value to an error kind; it only uses `0` vs non-zero, and classifies from the exact pkgmk message lines below.
+* **Message format:** `info()` prints `=======> <msg>` (7 `=`, one space) on stdout; `warning()` / `error()` print `=======> WARNING: <msg>` / `=======> ERROR: <msg>` on **stderr**. The `build()` xtrace (`+ build`, from `(set -e -x ; build)`) is also on stderr. A failing step is always followed by `=======> ERROR: Building '<target>' failed.` except for Pkgfile/directory/download errors, which exit directly.
+* **Exact error messages used for classification** (variable part in `<>`):
+  | Kind | pkgmk 5.40.12 message |
+  | :--- | :--- |
+  | SignatureError | `Signature mismatch found:` · `Failed verifying cryptographic digest` · `Creating signature failed` · `Refreshing signature failed` |
+  | ChecksumError | `Md5sum mismatch found:` · `Md5sum not ok.` |
+  | FootprintError | `Footprint mismatch found:` |
+  | DownloadError | `Downloading '<url>' failed.` · `Source file '<f>' not found (use option -d to download).` · `Source file '<f>' not found (can not be downloaded, URL not specified).` · `Command '<prog>' not found.` |
+  | PkgfileError | `Variable '<v>' not specified in <Pkgfile>.` · `Function 'build' not specified in <Pkgfile>.` · `File '<f>' not found.` |
+  | SourceDirError | `Directory '<d>' does not exist.` / `not writable.` / `not readable.` · `File '<f>' is not writable.` |
+  | InstallError | `Installing '<pkg>' failed.` (pkgmk `-i`/`-u` only; prt-get runs pkgadd itself) · prt-get fragment `error while pkgadding` **[hypothesis: from binary strings, full line not observed]** |
+  | UnpackError | `Building '<pkg>' failed.` with no `+ build` trace in that port |
+  | CompilationError | `Building '<pkg>' failed.` after `+ build` |
+  | DiskSpaceError | `No space left on device` (libc strerror, any tool) |
+  The former patterns `"Permission denied"` (matched build() commands, see `build-eacces.log`), `"pkgadd:"`, `"ENOSPC"`, `"curl: ("`, `"tar: Error"`, `": error:"`, `"make: ***"` and the invented `pkgmk: ...` strings were removed.
+* **Failure fixtures:** real output of the installed pkgmk, run **unprivileged** with `-cf <sandbox conf>` (so `/etc/pkgmk.conf` and its signing key are never read), against synthetic sandbox ports, one per failure class. No pkgadd, no network (download uses a missing `file://` path). Install failures through prt-get cannot be reproduced this way **[open: needs a real failing install, see session plan §7]**.
+* **Signals:** pkgmk traps `SIGHUP SIGINT SIGQUIT SIGTERM` and prints `=======> ERROR: Interrupted.`, then `exit 1`. **[verified]** A pkgmk started as a background job of a non-interactive shell inherits SIGINT as ignored, and bash cannot trap a signal ignored at entry: `kill -INT` was silently ignored (build ran to completion); `kill -TERM` worked.
+* **`/var/log/pkgbuild` contents (26 logs):** contrary to the expectation that leftovers are failures, most are **successful** builds from 2026-09-16 (contain `Building '...' succeeded.`) **[verified]**; why they survived `rmlog_on_success yes` is **[open]**. `qemu.log` and `gcc-fortran.log` end mid-compilation. Two logs from 2026-10-20 (`linux-firmware.log` at 21:36:30, `elfutils.log` at 21:38:15) were left by an owner-run `sysup` stopped with **Ctrl-C** **[owner-reported]**; neither contains `ERROR: Interrupted.`, and prt-get went on to the next port after the first interruption **[verified from the logs' `starting build` lines]**. Why the line is missing is **[hypothesis: prt-get, which writes the log, died before pkgmk's trap output reached it]**. Logs are not committed until reviewed by the owner.
+* **`prt-get --test` (dry run):**
+  | Command | rc | Output |
+  | :--- | :--- | :--- |
+  | `prt-get --test update llvm` (locked, outdated) | `0` | `-- Packages updated` / `llvm` / `prt-get: updated successfully`: the dry run **does not refuse a locked port named explicitly** **[verified]**; whether a real `update llvm` also ignores the lock is **[open]** |
+  | `prt-get --test sysup` | `0` | 7 ports (`elfutils linux-firmware python3-setuptools xfsprogs volume_key criu pcsclite`); the 4 locked outdated ports are excluded (11 outdated in total) |
+  | `prt-get --test remove glibc` | `0` | `-- Packages removed` / `glibc`: **prt-get has no core protection of its own**; OctoCRUX's policy (2.13) is the only guard |
+* **Capture script defect:** `crux_capture_execution.sh` greps `E_[A-Z_]+=`, which misses `E_MD5=6` (digit in the name). The table above was read from the copied `pkgmk` itself.
+
 ---
 
 ## 3. Exit Codes & Command Quirks Reference for Parsers

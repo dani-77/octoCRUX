@@ -38,22 +38,25 @@ enum class PrivilegeHelperType {
 };
 
 /**
- * @brief Categorized error kinds mirroring pkgmk(8) exit codes and CRUX domain errors.
- * Note: prt-get returns generic exit codes (1/255); exact classification under prt-get
- * is derived by inspecting /var/log/pkgbuild/<port>.log.
+ * @brief Categorized error kinds for CRUX build/install failures and domain errors.
+ * The numeric values follow the E_* names in pkgmk(8), but they are NOT exit codes
+ * OctoCRUX can rely on: OctoCRUX runs prt-get (through the privilege helper), whose
+ * exit code mapping is undocumented ("to be determined"), and pkgutils 5.40.12 pkgmk exits 1
+ * for footprint, build() and pkgadd failures (E_FOOTPRINT/E_BUILD/E_INSTALL are
+ * defined but unused). Classification is derived from the pkgmk log text instead.
  */
 enum class OperationErrorKind {
     None = 0,
-    GeneralError = 1,     // pkgmk code 1: General error
-    PkgfileError = 2,     // pkgmk code 2: The Pkgfile is invalid
-    SourceDirError = 3,   // pkgmk code 3: Source/build dir missing or lacking r/w permissions
-    DownloadError = 4,    // pkgmk code 4: Error downloading source files
-    UnpackError = 5,      // pkgmk code 5: Error unpacking source files
-    ChecksumError = 6,    // pkgmk code 6: md5sum mismatch
-    FootprintError = 7,   // pkgmk code 7: Footprint mismatch
-    CompilationError = 8, // pkgmk code 8: Error running build() function
-    InstallError = 9,     // pkgmk code 9: Error installing package via pkgadd
-    SignatureError = 10,  // signify digital signature or key verification failure
+    GeneralError = 1,     // Unclassified failure
+    PkgfileError = 2,     // Pkgfile invalid (E_PKGFILE)
+    SourceDirError = 3,   // Source/package dir missing or lacking r/w permissions (E_DIR_PERM)
+    DownloadError = 4,    // Error downloading source files (E_DOWNLOAD)
+    UnpackError = 5,      // Error unpacking source files (E_UNPACK)
+    ChecksumError = 6,    // md5sum mismatch (E_MD5)
+    FootprintError = 7,   // Footprint mismatch (E_FOOTPRINT, unused by pkgmk: exits 1)
+    CompilationError = 8, // build() function failed (E_BUILD, unused by pkgmk: exits 1)
+    InstallError = 9,     // pkgadd failed (E_INSTALL, unused by pkgmk: exits 1)
+    SignatureError = 10,  // signify signature mismatch or verification failure (E_SIGNATURE)
     DiskSpaceError = 11,  // ENOSPC on work directory mount
     ProtectedPackage = 12 // Core package removal blocked by protection policy
 };

@@ -1,0 +1,3 @@
+=======> Downloading 'file:///nonexistent-octocrux/octo-download-1.0.tar.gz'.
+curl: (37) Could not open file /nonexistent-octocrux/octo-download-1.0.tar.gz
+=======> ERROR: Downloading 'file:///nonexistent-octocrux/octo-download-1.0.tar.gz' failed.

@@ -1,0 +1,12 @@
+=======> WARNING: Signature file not found, falling back to old md5sum checking.
+=======> WARNING: Md5sum not found, creating new.
+=======> WARNING: Packages should be built as root.
+=======> Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.tGXv00/build-fail/pkg/octo-build-fail#1.0-1.pkg.tar.zst'.
++ build
++ printf '#include <octocrux_missing_header.h>\nint x;\n'
++ cc -c a.c
+a.c:1:10: fatal error: octocrux_missing_header.h: No such file or directory
+    1 | #include <octocrux_missing_header.h>
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+=======> ERROR: Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.tGXv00/build-fail/pkg/octo-build-fail#1.0-1.pkg.tar.zst' failed.

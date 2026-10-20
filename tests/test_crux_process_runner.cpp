@@ -1,5 +1,6 @@
 #include <QTest>
 #include <QSignalSpy>
+#include <QFile>
 #include "backend/crux_process_runner.h"
 
 using namespace OctoCRUX;
@@ -76,20 +77,20 @@ void TestCruxProcessRunner::testErrorExitClassification() {
     CruxProcessRunner runner;
     QSignalSpy spyFinished(&runner, &CruxProcessRunner::processFinished);
 
-    // Simulate pkgmk exit code 6 (md5sum mismatch)
-    const QString script = QStringLiteral(
-        "echo \"pkgmk: md5sum mismatch for file 'foo.tar.gz'\" >&2\n"
-        "exit 6\n"
-    );
+    // Replay a real pkgmk md5sum failure log (tools/gen_pkgmk_failure_logs.sh) on stderr
+    // and exit with a code unrelated to E_MD5: classification must come from the text.
+    const QString fixture = QStringLiteral(OCTOCRUX_SOURCE_DIR "/tests/fixtures/crux3.8/pkgmk-failures/md5.log");
+    QVERIFY(QFile::exists(fixture));
 
-    const bool started = runner.startProcess(QStringLiteral("sh"), {QStringLiteral("-c"), script});
+    const bool started = runner.startProcess(QStringLiteral("sh"),
+        {QStringLiteral("-c"), QStringLiteral("cat \"$1\" >&2; exit 1"), QStringLiteral("sh"), fixture});
     QVERIFY(started);
 
     QVERIFY(spyFinished.wait(5000));
     QCOMPARE(spyFinished.count(), 1);
 
     const QList<QVariant> args = spyFinished.takeFirst();
-    QCOMPARE(args.at(0).toInt(), 6);
+    QCOMPARE(args.at(0).toInt(), 1);
     QCOMPARE(args.at(1).value<OperationErrorKind>(), OperationErrorKind::ChecksumError);
 }
 

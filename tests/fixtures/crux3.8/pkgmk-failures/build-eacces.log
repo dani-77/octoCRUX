@@ -1,0 +1,8 @@
+=======> WARNING: Signature file not found, falling back to old md5sum checking.
+=======> WARNING: Md5sum not found, creating new.
+=======> WARNING: Packages should be built as root.
+=======> Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.tGXv00/build-eacces/pkg/octo-build-eacces#1.0-1.pkg.tar.zst'.
++ build
++ install -m 644 /dev/null /usr/octocrux-sandbox-probe
+install: cannot create regular file '/usr/octocrux-sandbox-probe': Permission denied
+=======> ERROR: Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.tGXv00/build-eacces/pkg/octo-build-eacces#1.0-1.pkg.tar.zst' failed.

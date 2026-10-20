@@ -7,13 +7,19 @@
 namespace OctoCRUX {
 
 /**
- * @brief Pure log analyzer and error classifier for pkgmk, prt-get, and pkgadd builds.
- * Maps compiler output, packaging errors, and exit codes to OperationErrorKind.
+ * @brief Pure log analyzer and error classifier for pkgmk builds run by prt-get.
+ *
+ * Classification is driven by the exact message lines pkgmk(8) prints
+ * ("=======> ERROR: ..."), taken from pkgutils 5.40.12 as shipped on CRUX 3.8,
+ * not by the process exit code: prt-get documents no exit code mapping,
+ * and pkgmk exits 1 for several distinct failures. See OPEN_QUESTIONS.md 2.14.
  */
 class BuildLogAnalyzer {
 public:
     /**
-     * @brief Classifies a build failure based on exitCode and captured log content.
+     * @brief Classifies a failed operation from its captured log.
+     * @param exitCode only distinguishes success (0) from failure (non-zero);
+     *        its value is never mapped to an error kind.
      */
     static OperationErrorKind classifyLog(const QString &logOutput, int exitCode);
 
@@ -23,7 +29,8 @@ public:
     static QString extractSummary(const QString &logOutput, OperationErrorKind kind);
 
     /**
-     * @brief Extracts the specific failing port name from prt-get / sysup output if present.
+     * @brief Returns the name of the last port pkgmk started building, if any.
+     * Parsed from "=======> Building '<dir>/<name>#<version>-<release>.pkg.tar.<ext>'."
      */
     static QString extractFailingPort(const QString &logOutput);
 

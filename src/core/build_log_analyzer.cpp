@@ -3,96 +3,144 @@
 
 namespace OctoCRUX {
 
+namespace {
+
+// Prefix pkgmk(8) puts on every error() line: info "ERROR: $1" -> echo "=======> $1"
+const QString kPkgmkError = QStringLiteral("=======> ERROR: ");
+
+// An exact pkgmk 5.40.12 error() message: fixed text before and after the
+// variable part (a path, URL or variable name). Empty suffix = prefix match only.
+struct PkgmkMessage {
+    QString prefix;
+    QString suffix;
+};
+
+const QList<PkgmkMessage> kSignatureMessages = {
+    {QStringLiteral("Signature mismatch found:"), {}},
+    {QStringLiteral("Failed verifying cryptographic digest"), {}},
+    {QStringLiteral("Creating signature failed"), {}},
+    {QStringLiteral("Refreshing signature failed"), {}},
+};
+const QList<PkgmkMessage> kChecksumMessages = {
+    {QStringLiteral("Md5sum mismatch found:"), {}},
+    {QStringLiteral("Md5sum not ok."), {}},
+};
+const QList<PkgmkMessage> kFootprintMessages = {
+    {QStringLiteral("Footprint mismatch found:"), {}},
+};
+const QList<PkgmkMessage> kDownloadMessages = {
+    {QStringLiteral("Downloading '"), QStringLiteral("' failed.")},
+    {QStringLiteral("Source file '"), QStringLiteral("(use option -d to download).")},
+    {QStringLiteral("Source file '"), QStringLiteral("(can not be downloaded, URL not specified).")},
+    {QStringLiteral("Command '"), QStringLiteral("' not found.")}, // download program missing
+};
+const QList<PkgmkMessage> kPkgfileMessages = {
+    {QStringLiteral("Variable '"), {}},   // Variable '<var>' not specified in <Pkgfile>.
+    {QStringLiteral("Function 'build' not specified in"), {}},
+    {QStringLiteral("File '"), QStringLiteral("' not found.")}, // Pkgfile or -cf config missing
+};
+const QList<PkgmkMessage> kDirectoryMessages = {
+    {QStringLiteral("Directory '"), QStringLiteral("' does not exist.")},
+    {QStringLiteral("Directory '"), QStringLiteral("' not writable.")},
+    {QStringLiteral("Directory '"), QStringLiteral("' not readable.")},
+    {QStringLiteral("File '"), QStringLiteral("' is not writable.")},
+};
+const QList<PkgmkMessage> kInstallMessages = {
+    {QStringLiteral("Installing '"), QStringLiteral("' failed.")}, // pkgmk -i/-u only
+};
+const QString kBuildFailedMessage = QStringLiteral("Building '");      // Building '<package>' failed.
+const QString kBuildingPhase = QStringLiteral("=======> Building '"); // info "Building '$TARGET'[ succeeded]."
+// pkgmk runs build() as (set -e -x ; build), so its xtrace always starts with this line.
+const QString kBuildTraceStart = QStringLiteral("+ build");
+
+// libc strerror(ENOSPC); printed by whichever tool hit the full filesystem.
+const QString kNoSpace = QStringLiteral("No space left on device");
+// prt-get 5.19.9 message fragment when its own pkgadd step fails. Taken from the
+// binary's strings only; the full line has not been observed yet [hypothesis].
+const QString kPrtGetPkgaddError = QStringLiteral("error while pkgadding");
+
+bool hasPkgmkError(const QStringList &errorMessages, const QList<PkgmkMessage> &candidates) {
+    for (const QString &msg : errorMessages) {
+        for (const PkgmkMessage &candidate : candidates) {
+            if (msg.startsWith(candidate.prefix) && msg.endsWith(candidate.suffix)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+} // namespace
+
 OperationErrorKind BuildLogAnalyzer::classifyLog(const QString &logOutput, int exitCode) {
     if (exitCode == 0) {
         return OperationErrorKind::None;
     }
 
-    // 1. Direct exit codes from pkgmk(8)
-    switch (exitCode) {
-    case 2: return OperationErrorKind::PkgfileError;
-    case 3: return OperationErrorKind::SourceDirError;
-    case 4: return OperationErrorKind::DownloadError;
-    case 5: return OperationErrorKind::UnpackError;
-    case 6: return OperationErrorKind::ChecksumError;
-    case 7: return OperationErrorKind::FootprintError;
-    case 8: return OperationErrorKind::CompilationError;
-    case 9: return OperationErrorKind::InstallError;
-    default:
-        break;
+    // The exit code value is deliberately ignored: OctoCRUX runs prt-get, whose man
+    // page leaves the value -> meaning mapping "to be determined", and pkgmk itself
+    // exits 1 for footprint, build() and pkgadd failures alike. Only the log text
+    // tells the failure classes apart.
+    const QStringList lines = logOutput.split(QLatin1Char('\n'));
+
+    // pkgmk prints "+ build" (xtrace, stderr) when build() starts, after unpacking.
+    // A port's build ends with "Building '...' succeeded." (stdout) or
+    // "ERROR: Building '...' failed." (stderr). The trace flag is reset at those end
+    // lines rather than at the "=======> Building '...'." start line, because the
+    // runner interleaves stdout and stderr in arrival order, and a fast unpack can
+    // let "+ build" arrive before the start line; the previous port's end line is
+    // separated from it by the whole install step.
+    QStringList errorMessages;          // text after "=======> ERROR: "
+    bool buildFailed = false;           // "ERROR: Building '...' failed." seen
+    bool failedBuildHadTrace = false;   // build() had started in the port that failed
+    bool traceInCurrentPort = false;
+    for (const QString &line : lines) {
+        if (line == kBuildTraceStart) {
+            traceInCurrentPort = true;
+        } else if (line.startsWith(kBuildingPhase) && line.endsWith(QStringLiteral("' succeeded."))) {
+            traceInCurrentPort = false;
+        } else if (line.startsWith(kPkgmkError)) {
+            const QString msg = line.mid(kPkgmkError.size());
+            errorMessages.append(msg);
+            if (msg.startsWith(kBuildFailedMessage) && msg.endsWith(QStringLiteral("' failed."))) {
+                buildFailed = true;
+                failedBuildHadTrace = traceInCurrentPort;
+                traceInCurrentPort = false;
+            }
+        }
     }
 
-    // 2. Pattern-based classification for prt-get wrapper or generic exit code (1 / 255)
-    // Priority 1: Out of disk space (ENOSPC)
-    if (logOutput.contains(QStringLiteral("No space left on device"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("ENOSPC"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("out of disk space"), Qt::CaseInsensitive)) {
+    // Order matters: md5sum, signature and footprint failures are each followed by
+    // the generic "Building '...' failed." line, and ENOSPC usually surfaces as a
+    // build() failure, so the specific causes are checked before the generic one.
+    if (logOutput.contains(kNoSpace)) {
         return OperationErrorKind::DiskSpaceError;
     }
-
-    // Priority 2: Footprint discrepancies
-    if (logOutput.contains(QStringLiteral("Footprint mismatch"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("Footprint differences"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("footprint error"), Qt::CaseInsensitive)) {
-        return OperationErrorKind::FootprintError;
-    }
-
-    // Priority 3: Checksum mismatches
-    if (logOutput.contains(QStringLiteral("md5sum mismatch"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("MD5 mismatch"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("checksum failed"), Qt::CaseInsensitive)) {
-        return OperationErrorKind::ChecksumError;
-    }
-
-    // Priority 4: Signify signature failures
-    if (logOutput.contains(QStringLiteral("signify:"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("signature verification failed"), Qt::CaseInsensitive)) {
+    if (hasPkgmkError(errorMessages, kSignatureMessages)) {
         return OperationErrorKind::SignatureError;
     }
-
-    // Priority 5: Download failures
-    if (logOutput.contains(QStringLiteral("failure downloading"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("download failed"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("curl: ("), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("404 Not Found"), Qt::CaseInsensitive)) {
+    if (hasPkgmkError(errorMessages, kChecksumMessages)) {
+        return OperationErrorKind::ChecksumError;
+    }
+    if (hasPkgmkError(errorMessages, kFootprintMessages)) {
+        return OperationErrorKind::FootprintError;
+    }
+    if (hasPkgmkError(errorMessages, kDownloadMessages)) {
         return OperationErrorKind::DownloadError;
     }
-
-    // Priority 6: Unpack failures
-    if (logOutput.contains(QStringLiteral("error unpacking"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("tar: Error"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("unpacking failed"), Qt::CaseInsensitive)) {
-        return OperationErrorKind::UnpackError;
-    }
-
-    // Priority 7: Pkgfile syntax errors
-    if (logOutput.contains(QStringLiteral("Pkgfile is invalid"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("syntax error in Pkgfile"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("variable 'name' not set"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("variable 'version' not set"), Qt::CaseInsensitive)) {
+    if (hasPkgmkError(errorMessages, kPkgfileMessages)) {
         return OperationErrorKind::PkgfileError;
     }
-
-    // Priority 8: Source/work directory permission errors
-    if (logOutput.contains(QStringLiteral("lacking read/write permissions"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("Permission denied"), Qt::CaseInsensitive)) {
+    if (hasPkgmkError(errorMessages, kDirectoryMessages)) {
         return OperationErrorKind::SourceDirError;
     }
-
-    // Priority 9: Installation errors via pkgadd
-    if (logOutput.contains(QStringLiteral("pkgadd:"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("error while installing package"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("failed to install package"), Qt::CaseInsensitive)) {
+    if (hasPkgmkError(errorMessages, kInstallMessages) || logOutput.contains(kPrtGetPkgaddError)) {
         return OperationErrorKind::InstallError;
     }
-
-    // Priority 10: Compiler / build function errors
-    if (logOutput.contains(QStringLiteral(": error:"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("fatal error:"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("build function"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("make: ***"), Qt::CaseInsensitive) ||
-        logOutput.contains(QStringLiteral("ninja: build stopped"), Qt::CaseInsensitive)) {
-        return OperationErrorKind::CompilationError;
+    if (buildFailed) {
+        // A build failure before build() started means unpack_source() failed (E_UNPACK).
+        return failedBuildHadTrace ? OperationErrorKind::CompilationError
+                                   : OperationErrorKind::UnpackError;
     }
 
     return OperationErrorKind::GeneralError;
@@ -134,22 +182,14 @@ QString BuildLogAnalyzer::extractSummary(const QString &logOutput, OperationErro
 }
 
 QString BuildLogAnalyzer::extractFailingPort(const QString &logOutput) {
-    static const QRegularExpression prtGetFailedRegex(
-        QStringLiteral("prt-get:\\s+(?:failed to (?:build|install)|error in)\\s+['\"]?([a-zA-Z0-9_\\-\\.\\+]+)['\"]?"),
-        QRegularExpression::CaseInsensitiveOption
-    );
-
-    QRegularExpressionMatch match = prtGetFailedRegex.match(logOutput);
-    if (match.hasMatch()) {
-        return match.captured(1);
-    }
-
+    // pkgmk: info "Building '$TARGET'." and error "Building '$TARGET' failed.", with
+    // TARGET=$PKGMK_PACKAGE_DIR/$name#$version-$release.pkg.tar.<ext>. md5sum and
+    // signature failures happen before the first form, so both are matched.
     static const QRegularExpression buildingRegex(
-        QStringLiteral("======>\\s+Building\\s+['\"]?([a-zA-Z0-9_\\-\\.\\+]+)['\"]?"),
-        QRegularExpression::CaseInsensitiveOption
+        QStringLiteral("^=======> (?:ERROR: )?Building '(?:[^']*/)?([^/'#]+)#[^']*'(?: failed)?\\.$"),
+        QRegularExpression::MultilineOption
     );
 
-    // Look for the last "Building <port>" line in the log
     QRegularExpressionMatchIterator it = buildingRegex.globalMatch(logOutput);
     QString lastPort;
     while (it.hasNext()) {

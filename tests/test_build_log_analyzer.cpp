@@ -1,130 +1,139 @@
 #include <QTest>
+#include <QFile>
+#include <QRegularExpression>
 #include "core/build_log_analyzer.h"
 
 using namespace OctoCRUX;
 
+/*
+ * Every log used here is real pkgmk 5.40.12 output, generated on CRUX 3.8 by
+ * tools/gen_pkgmk_failure_logs.sh (unprivileged pkgmk against sandbox ports) and
+ * stored verbatim in tests/fixtures/crux3.8/pkgmk-failures/. No line is hand-written.
+ */
 class TestBuildLogAnalyzer : public QObject {
     Q_OBJECT
 
 private slots:
-    void testDirectPkgmkExitCodes();
-    void testDiskSpaceErrorClassification();
-    void testFootprintMismatchClassification();
-    void testMd5ChecksumMismatchClassification();
-    void testSignatureFailureClassification();
-    void testDownloadFailureClassification();
-    void testUnpackFailureClassification();
-    void testPkgfileErrorClassification();
-    void testCompilationErrorClassification();
-    void testInstallErrorClassification();
+    void testRealPkgmkFailures_data();
+    void testRealPkgmkFailures();
+    void testExitCodeValueIsIgnored();
+    void testPermissionDeniedInBuildIsCompilationError();
+    void testSuccessLogWithFailureExitIsGeneral();
+    void testUnpackDetectionAcrossPortsAndChannels();
     void testExtractFailingPort();
     void testExtractSummary();
+
+private:
+    static QString fixture(const QString &name);
+    static int fixtureRc(const QString &name);
 };
 
-void TestBuildLogAnalyzer::testDirectPkgmkExitCodes() {
-    QCOMPARE(BuildLogAnalyzer::classifyLog(QString(), 0), OperationErrorKind::None);
-    QCOMPARE(BuildLogAnalyzer::classifyLog(QString(), 2), OperationErrorKind::PkgfileError);
-    QCOMPARE(BuildLogAnalyzer::classifyLog(QString(), 3), OperationErrorKind::SourceDirError);
-    QCOMPARE(BuildLogAnalyzer::classifyLog(QString(), 4), OperationErrorKind::DownloadError);
-    QCOMPARE(BuildLogAnalyzer::classifyLog(QString(), 5), OperationErrorKind::UnpackError);
-    QCOMPARE(BuildLogAnalyzer::classifyLog(QString(), 6), OperationErrorKind::ChecksumError);
-    QCOMPARE(BuildLogAnalyzer::classifyLog(QString(), 7), OperationErrorKind::FootprintError);
-    QCOMPARE(BuildLogAnalyzer::classifyLog(QString(), 8), OperationErrorKind::CompilationError);
-    QCOMPARE(BuildLogAnalyzer::classifyLog(QString(), 9), OperationErrorKind::InstallError);
+QString TestBuildLogAnalyzer::fixture(const QString &name) {
+    QFile f(QStringLiteral(OCTOCRUX_SOURCE_DIR "/tests/fixtures/crux3.8/pkgmk-failures/%1.log").arg(name));
+    if (!f.open(QIODevice::ReadOnly)) {
+        qFatal("missing fixture %s", qPrintable(f.fileName()));
+    }
+    return QString::fromUtf8(f.readAll());
 }
 
-void TestBuildLogAnalyzer::testDiskSpaceErrorClassification() {
-    const QString log = QStringLiteral(
-        "======> Building 'llvm'\n"
-        "make[2]: *** [bin/clang] Error 1\n"
-        "fatal error: error writing to /tmp/ccX483j.s: No space left on device\n"
-        "compilation terminated.\n"
-    );
-    // prt-get exits with generic 1
-    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 1), OperationErrorKind::DiskSpaceError);
+int TestBuildLogAnalyzer::fixtureRc(const QString &name) {
+    QFile f(QStringLiteral(OCTOCRUX_SOURCE_DIR "/tests/fixtures/crux3.8/pkgmk-failures/%1.rc").arg(name));
+    if (!f.open(QIODevice::ReadOnly)) {
+        qFatal("missing fixture %s", qPrintable(f.fileName()));
+    }
+    return QString::fromUtf8(f.readAll()).trimmed().toInt();
 }
 
-void TestBuildLogAnalyzer::testFootprintMismatchClassification() {
-    const QString log = QStringLiteral(
-        "======> Checking footprint\n"
-        "======> Footprint differences\n"
-        "NEW      usr/lib/libtest.so.2\n"
-        "MISSING  usr/lib/libtest.so.1\n"
-        "pkgmk: Footprint mismatch\n"
-    );
-    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 1), OperationErrorKind::FootprintError);
+void TestBuildLogAnalyzer::testRealPkgmkFailures_data() {
+    QTest::addColumn<QString>("name");
+    QTest::addColumn<OperationErrorKind>("expected");
+
+    QTest::newRow("build-fail")   << "build-fail"   << OperationErrorKind::CompilationError;
+    QTest::newRow("enospc")       << "enospc"       << OperationErrorKind::DiskSpaceError;
+    QTest::newRow("footprint")    << "footprint"    << OperationErrorKind::FootprintError;
+    QTest::newRow("md5")          << "md5"          << OperationErrorKind::ChecksumError;
+    QTest::newRow("signature")    << "signature"    << OperationErrorKind::SignatureError;
+    QTest::newRow("download")     << "download"     << OperationErrorKind::DownloadError;
+    QTest::newRow("unpack")       << "unpack"       << OperationErrorKind::UnpackError;
+    QTest::newRow("pkgfile")      << "pkgfile"      << OperationErrorKind::PkgfileError;
+    QTest::newRow("dirperm")      << "dirperm"      << OperationErrorKind::SourceDirError;
+    QTest::newRow("interrupt")    << "interrupt"    << OperationErrorKind::GeneralError;
 }
 
-void TestBuildLogAnalyzer::testMd5ChecksumMismatchClassification() {
-    const QString log = QStringLiteral(
-        "======> Verifying checksums\n"
-        "pkgmk: md5sum mismatch for file 'source.tar.gz'\n"
-    );
-    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 1), OperationErrorKind::ChecksumError);
+void TestBuildLogAnalyzer::testRealPkgmkFailures() {
+    QFETCH(QString, name);
+    QFETCH(OperationErrorKind, expected);
+
+    // prt-get's exit code value is unspecified; any non-zero value must give the same result.
+    const QString log = fixture(name);
+    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 1), expected);
+    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 255), expected);
+    QCOMPARE(BuildLogAnalyzer::classifyLog(log, fixtureRc(name)), expected);
 }
 
-void TestBuildLogAnalyzer::testSignatureFailureClassification() {
-    const QString log = QStringLiteral(
-        "======> Verifying signatures\n"
-        "signify: signature verification failed\n"
-    );
-    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 1), OperationErrorKind::SignatureError);
+void TestBuildLogAnalyzer::testExitCodeValueIsIgnored() {
+    // Real pkgmk exits 1 for footprint and build() failures, never 7 or 8.
+    QCOMPARE(fixtureRc(QStringLiteral("footprint")), 1);
+    QCOMPARE(fixtureRc(QStringLiteral("build-fail")), 1);
+
+    // A non-zero code that happens to equal an E_* value must not override the log text.
+    QCOMPARE(BuildLogAnalyzer::classifyLog(fixture(QStringLiteral("md5")), 8),
+             OperationErrorKind::ChecksumError);
+    QCOMPARE(BuildLogAnalyzer::classifyLog(fixture(QStringLiteral("build-fail")), 9),
+             OperationErrorKind::CompilationError);
+    QCOMPARE(BuildLogAnalyzer::classifyLog(fixture(QStringLiteral("interrupt")), 2),
+             OperationErrorKind::GeneralError);
 }
 
-void TestBuildLogAnalyzer::testDownloadFailureClassification() {
-    const QString log = QStringLiteral(
-        "curl: (22) The requested URL returned error: 404 Not Found\n"
-        "pkgmk: failure downloading 'http://example.com/foo.tar.gz'\n"
-    );
-    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 1), OperationErrorKind::DownloadError);
-}
-
-void TestBuildLogAnalyzer::testUnpackFailureClassification() {
-    const QString log = QStringLiteral(
-        "tar: Error is not recoverable: exiting now\n"
-        "pkgmk: error unpacking 'archive.tar.xz'\n"
-    );
-    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 1), OperationErrorKind::UnpackError);
-}
-
-void TestBuildLogAnalyzer::testPkgfileErrorClassification() {
-    const QString log = QStringLiteral(
-        "Pkgfile: line 12: syntax error near unexpected token 'fi'\n"
-        "pkgmk: Pkgfile is invalid\n"
-    );
-    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 1), OperationErrorKind::PkgfileError);
-}
-
-void TestBuildLogAnalyzer::testCompilationErrorClassification() {
-    const QString log = QStringLiteral(
-        "main.cpp:45:10: fatal error: foo.h: No such file or directory\n"
-        "#include <foo.h>\n"
-        "make: *** [Makefile:120: main.o] Error 1\n"
-    );
+void TestBuildLogAnalyzer::testPermissionDeniedInBuildIsCompilationError() {
+    // "Permission denied" from a command inside build() is a build() failure, not a
+    // source/package directory problem (pkgmk reports those as "Directory '...'").
+    const QString log = fixture(QStringLiteral("build-eacces"));
+    QVERIFY(log.contains(QStringLiteral("Permission denied")));
     QCOMPARE(BuildLogAnalyzer::classifyLog(log, 1), OperationErrorKind::CompilationError);
 }
 
-void TestBuildLogAnalyzer::testInstallErrorClassification() {
-    const QString log = QStringLiteral(
-        "pkgadd: can't open /var/lib/pkg/db\n"
-        "pkgmk: error while installing package via pkgadd\n"
-    );
-    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 1), OperationErrorKind::InstallError);
+void TestBuildLogAnalyzer::testSuccessLogWithFailureExitIsGeneral() {
+    const QString log = fixture(QStringLiteral("success"));
+    QCOMPARE(fixtureRc(QStringLiteral("success")), 0);
+    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 0), OperationErrorKind::None);
+    // No pkgmk ERROR line: a later prt-get step failed, cause unknown from this log.
+    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 1), OperationErrorKind::GeneralError);
+}
+
+void TestBuildLogAnalyzer::testUnpackDetectionAcrossPortsAndChannels() {
+    // A previous port's successful build() trace must not hide the next port's unpack failure.
+    QCOMPARE(BuildLogAnalyzer::classifyLog(fixture(QStringLiteral("success")) + fixture(QStringLiteral("unpack")), 1),
+             OperationErrorKind::UnpackError);
+    QCOMPARE(BuildLogAnalyzer::classifyLog(fixture(QStringLiteral("unpack")) + fixture(QStringLiteral("success")), 1),
+             OperationErrorKind::UnpackError);
+
+    // CruxProcessRunner interleaves stdout ("=======> Building ...") and stderr
+    // ("+ build" xtrace) in arrival order. Same real lines, stderr trace first:
+    // still a build() failure.
+    QStringList lines = fixture(QStringLiteral("build-fail")).split(QLatin1Char('\n'));
+    const int phase = lines.indexOf(QRegularExpression(QStringLiteral("^=======> Building '.*'\\.$")));
+    const int trace = lines.indexOf(QStringLiteral("+ build"));
+    QVERIFY(phase >= 0 && trace > phase);
+    lines.move(trace, phase);
+    QCOMPARE(BuildLogAnalyzer::classifyLog(lines.join(QLatin1Char('\n')), 1),
+             OperationErrorKind::CompilationError);
 }
 
 void TestBuildLogAnalyzer::testExtractFailingPort() {
-    const QString log1 = QStringLiteral(
-        "======> Building 'llvm'\n"
-        "======> Building 'clang'\n"
-        "prt-get: failed to install 'clang'\n"
-    );
-    QCOMPARE(BuildLogAnalyzer::extractFailingPort(log1), QStringLiteral("clang"));
-
-    const QString log2 = QStringLiteral(
-        "======> Building 'webkit2gtk'\n"
-        "compilation terminated.\n"
-    );
-    QCOMPARE(BuildLogAnalyzer::extractFailingPort(log2), QStringLiteral("webkit2gtk"));
+    QCOMPARE(BuildLogAnalyzer::extractFailingPort(fixture(QStringLiteral("build-fail"))),
+             QStringLiteral("octo-build-fail"));
+    QCOMPARE(BuildLogAnalyzer::extractFailingPort(fixture(QStringLiteral("signature"))),
+             QStringLiteral("lz4"));
+    // md5sum fails before the "Building" phase line; the "ERROR: Building ... failed." line names it.
+    QCOMPARE(BuildLogAnalyzer::extractFailingPort(fixture(QStringLiteral("md5"))),
+             QStringLiteral("octo-md5"));
+    // Pkgfile/directory checks fail before any package target is printed.
+    QCOMPARE(BuildLogAnalyzer::extractFailingPort(fixture(QStringLiteral("pkgfile"))), QString());
+    QCOMPARE(BuildLogAnalyzer::extractFailingPort(fixture(QStringLiteral("dirperm"))), QString());
+    // The last "Building" line wins when several ports are built in one run.
+    const QString twoPorts = fixture(QStringLiteral("success")) + fixture(QStringLiteral("footprint"));
+    QCOMPARE(BuildLogAnalyzer::extractFailingPort(twoPorts), QStringLiteral("octo-footprint"));
 }
 
 void TestBuildLogAnalyzer::testExtractSummary() {
@@ -132,6 +141,8 @@ void TestBuildLogAnalyzer::testExtractSummary() {
     QVERIFY(BuildLogAnalyzer::extractSummary(QString(), OperationErrorKind::DiskSpaceError).contains(QStringLiteral("ENOSPC")));
     QVERIFY(BuildLogAnalyzer::extractSummary(QString(), OperationErrorKind::FootprintError).contains(QStringLiteral("Footprint mismatch")));
     QVERIFY(BuildLogAnalyzer::extractSummary(QString(), OperationErrorKind::ChecksumError).contains(QStringLiteral("MD5 mismatch")));
+    QVERIFY(BuildLogAnalyzer::extractSummary(fixture(QStringLiteral("interrupt")), OperationErrorKind::GeneralError)
+                .contains(QStringLiteral("octo-interrupt")));
 }
 
 QTEST_MAIN(TestBuildLogAnalyzer)
