@@ -26,6 +26,7 @@
 #include <QMessageBox>
 #include <QScrollBar>
 #include <QClipboard>
+#include <QCloseEvent>
 
 namespace OctoCRUX {
 
@@ -658,6 +659,38 @@ void MainWindow::onToggleLockClicked() {
 
 void MainWindow::onCancelOperationClicked() {
     m_backend->cancelActiveOperation();
+}
+
+QMessageBox* MainWindow::closeRefusedMessage() const {
+    return m_closeRefusedMessage;
+}
+
+void MainWindow::closeEvent(QCloseEvent *event) {
+    if (!m_operationInProgress) {
+        QMainWindow::closeEvent(event);
+        return;
+    }
+
+    event->ignore();
+
+    if (!m_closeRefusedMessage) {
+        m_closeRefusedMessage = new QMessageBox(
+            QMessageBox::Warning,
+            QStringLiteral("Operation in progress"),
+            QStringLiteral(
+                "OctoCRUX cannot be closed while an operation is running.\n\n"
+                "Closing now would end the privilege helper (qt-sudo/sudo) with SIGTERM and, "
+                "one second later, SIGKILL. The root build processes it started (prt-get, "
+                "pkgmk, make) could keep running unsupervised, with nobody to report or "
+                "stop them.\n\n"
+                "Press Cancel in the toolbar and wait until the operation reports that it "
+                "has finished, then close the window."),
+            QMessageBox::Ok,
+            this);
+    }
+    // open(), not exec(): window-modal and non-blocking, so the event loop keeps
+    // streaming build output while the message is shown.
+    m_closeRefusedMessage->open();
 }
 
 void MainWindow::onCustomContextMenuRequested(const QPoint &pos) {

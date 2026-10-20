@@ -7,6 +7,7 @@
 
 #include <QMainWindow>
 #include <QItemSelection>
+#include <QPointer>
 #include <memory>
 #include <optional>
 
@@ -21,6 +22,8 @@ class QLabel;
 class QTextBrowser;
 class QPlainTextEdit;
 class QSplitter;
+class QMessageBox;
+class QCloseEvent;
 class QProgressBar;
 QT_END_NAMESPACE
 
@@ -45,6 +48,9 @@ public:
     QPlainTextEdit* outputLogEdit() const;
 
     void checkPrivilegeHelper();
+
+    /** The message shown when a close is refused during an operation (testing). */
+    QMessageBox* closeRefusedMessage() const;
 
 public slots:
     void refreshCatalog();
@@ -72,6 +78,14 @@ private slots:
     void onToggleLockClicked();
     void onCancelOperationClicked();
     void onCustomContextMenuRequested(const QPoint &pos);
+
+protected:
+    /**
+     * Refuses to close while an operation runs: tearing down the backend would end
+     * the privilege helper (SIGTERM, then SIGKILL from the QProcess destructor),
+     * which can leave root build processes running unsupervised.
+     */
+    void closeEvent(QCloseEvent *event) override;
 
 private:
     void setupUi();
@@ -131,6 +145,7 @@ private:
     QLabel *m_backendLabel = nullptr;
 
     bool m_operationInProgress = false;
+    QPointer<QMessageBox> m_closeRefusedMessage;
 };
 
 } // namespace OctoCRUX

@@ -1,4 +1,5 @@
 #include <QTest>
+#include <QMessageBox>
 #include <QFile>
 #include <QTextStream>
 #include <QTableView>
@@ -43,6 +44,7 @@ private slots:
     void testSearchBoxFiltering();
     void testPortSelectionUpdatesDetailTabs();
     void testLiveExecutionStreaming();
+    void testCloseRefusedDuringOperation();
 
 private:
     QString readFile(const QString &filePath);
@@ -211,6 +213,25 @@ void TestMainWindow::testLiveExecutionStreaming() {
     QVERIFY(logEdit->toPlainText().contains(QStringLiteral("Building 'test-stream'")));
     QVERIFY(logEdit->toPlainText().contains(QStringLiteral("gcc -O2 -pipe main.c -o main")));
     QVERIFY(logEdit->toPlainText().contains(QStringLiteral("pkgmk: warning: unused variable")));
+}
+
+void TestMainWindow::testCloseRefusedDuringOperation() {
+    m_window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(m_window.get()));
+
+    // An operation starts: closing must be refused with an explanation.
+    emit m_adapter->progressChanged(1, 1, QStringLiteral("Installing test-close"));
+    QVERIFY(!m_window->close());
+    QVERIFY(m_window->isVisible());
+    QVERIFY(m_window->closeRefusedMessage() != nullptr);
+    QTRY_VERIFY(m_window->closeRefusedMessage()->isVisible());
+    QVERIFY(m_window->closeRefusedMessage()->text().contains(QStringLiteral("SIGKILL")));
+    m_window->closeRefusedMessage()->accept();
+
+    // Once the operation has finished, the window closes normally.
+    emit m_adapter->operationFinished(1, OperationErrorKind::GeneralError, QStringLiteral("test-close done"));
+    QVERIFY(m_window->close());
+    QVERIFY(!m_window->isVisible());
 }
 
 QTEST_MAIN(TestMainWindow)
