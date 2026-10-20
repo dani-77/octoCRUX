@@ -115,7 +115,7 @@ In accordance with [RESEARCH.md](RESEARCH.md) and the SCOFS protocol in [AGENTS.
   2. **Decided Privilege Direction:** The GUI application always runs unprivileged. Elevation is invoked per-transaction for mutating operations (`ports -u`, `depinst`, `update`, `remove`, `lock`).
 * **Remaining Open Questions:**
   1. **[open] Interactive Prompts in Builds:** How to handle rare interactive prompts in `Pkgfile` scripts under a headless `QProcess`? (Requires external terminal fallback or lightweight PTY helper.) *Interim behaviour [verified with `tests/scripts/fake_interactive_pkgfile.sh`]:* `CruxProcessRunner` closes the child's stdin right after start, so a prompt reads EOF and the build fails visibly instead of hanging forever. Not yet observed through `qt-sudo`/`sudo`/`prt-get`/`pkgmk` with a real interactive port.
-  2. **[open] Cross-UID Cancellation:** An unprivileged GUI cannot send `SIGINT`/`SIGTERM` to a root process group (`EPERM`). PTY line discipline (`^C`) or elevation helper signal relaying must be verified in disposable environment.
+  2. **[open, partially verified] Cross-UID Cancellation:** An unprivileged GUI cannot send `SIGINT`/`SIGTERM` to a root process group (`EPERM`). PTY line discipline (`^C`) or elevation helper signal relaying must be verified. *Partial result (2.15):* with qt-sudo 2.4.1 / sudo backend, Cancel during a **download** left no root process behind. Cancel during **compilation** is still untested.
 
 ### 2.10 `pkginfo -o` Pattern Semantics & POSIX ERE Escaping
 * **Status: [verified on test machine]** (Fixtures: `pkginfo-o-disc-regex-dot.out`, `pkginfo-o-disc-glob-qmark.out`, `pkginfo-o-disc-regex-escaped.out`, `pkginfo-o-stdcxx-escaped.out`, from `octocrux-prod-capture-20261019-203243.tar.gz`)
@@ -198,6 +198,25 @@ In accordance with [RESEARCH.md](RESEARCH.md) and the SCOFS protocol in [AGENTS.
 * **Capture script defect (fixed):** the 2026-10-20 capture was taken with a `crux_capture_execution.sh` that grepped `E_[A-Z_]+=`, which misses `E_MD5=6` (digit in the name), so its `pkgmk-exitcodes.out` lists 9 codes. The table above was read from the copied `pkgmk` itself. The script now greps `E_[A-Z0-9_]+=` (10 codes on pkgutils 5.40.12).
 
 ---
+
+### 2.15 First Real Operations Through OctoCRUX (2026-10-20, T480s, owner-driven)
+* **Status: [verified on test machine]** except where labelled. Build: commit `064ab31` (transaction preview present in the running binary, checked by its strings). Helper: qt-sudo 2.4.1, sudo backend.
+* **Unlock `rust` (~22:59) [verified]:** `/var/lib/pkg/prt-get.locker` changed at 22:59:27 and now lists 4 ports (`llvm clang lld compiler-rt`). Locked count 5 -> 4. The owner unlocked `rust` **on purpose**: `rust-bin` is the package in use **[owner-reported]**. So 2.4 item 3 (5 locked) is historical.
+* **Sync (`ports -u`) [verified, partially]:** `/usr/ports/d77crux` was modified at 22:48:53; the other collections were unchanged since 21:27 or earlier. Whether the Sync confirmation dialog appeared is not recorded. Counts stayed 2306 ports / 546 installed / 11 outdated.
+* **Upgrade with nothing selected (~23:09):**
+  1. **The transaction preview dialog appeared** and the owner pressed Apply **[owner-reported]**.
+  2. **No qt-sudo password prompt appeared** **[owner-reported]**. **[hypothesis]** sudo reused cached credentials (its timestamp) from the Unlock/Sync a few minutes earlier. **Consequence:** the helper's password prompt is not a dependable safety barrier; the OctoCRUX preview dialog is the only guaranteed gate before root execution.
+  3. Process tree observed at 23:11:01: `octocrux (dani77)` -> `qt-sudo -d prt-get update criu elfutils linux-firmware pcsclite python3-setuptools volume_key xfsprogs` (dani77) -> `sudo --preserve-env=DISPLAY ...` (root) -> `sudo` (root) -> `prt-get update ...` (root) -> `pkgmk -d` (root) -> `curl` (root). One elevated invocation for the 7 ports, as previewed.
+  4. **criu 4.3-1 and elfutils 0.197-1 failed with `Footprint mismatch found:`**, with `NEW` entries only (criu: `usr/include/compel/plugins/std/syscall-64.h`, `syscall-codes-64.h`; elfutils: `usr/bin/eu-stackprof`). prt-get continued with the next port after each failure. Their `/var/log/pkgbuild/*.log` files are **real failure logs**, candidates to replace the sandbox fixtures (D1) after owner review for private data.
+* **Cancel during the linux-firmware download (~23:11:47) [verified]:**
+  1. The log and `linux-firmware-20261019.tar.xz.partial` stopped growing at 23:11:47. In 6 samples from 23:12:21 to 23:12:46 (5 s apart) **no** `qt-sudo`, `sudo`, `prt-get`, `pkgmk`, `curl`, `make` or `gcc` process was running.
+  2. prt-get did **not** move on to the next port (no new logs for the 4 remaining ports). This differs from the owner's terminal Ctrl-C (2.14).
+  3. Nothing was installed: still 11 outdated, no new files in `/var/lib/pkg/rejected`, `/usr/ports/work` empty. Left behind: the 243 MB `.partial` download, which pkgmk resumes later.
+  4. The log has no `ERROR: Interrupted.` line; it ends mid curl progress.
+  5. OctoCRUX's Output tab showed `Operation was cancelled by user` **[owner-reported]**. Whether the "still running" warning appeared is not recorded.
+  6. **Limits:** Cancel during **compilation** (make/gcc) is still untested. The first sample was ~34 s after Cancel, so neither the exit latency nor which process relayed the signal is known. Verified only for qt-sudo 2.4.1 with the sudo backend.
+* **UI defect [owner-reported]:** in the status bar the `Total: 2306 ports | ...` summary overlaps other status bar text and is hard to read. Cause not investigated yet.
+* **Read-only GUI checks [owner-reported ✓]:** status bar content (apart from the overlap above), status filters, `gtk3` detail tabs, and Remove disabled for `glibc`.
 
 ## 3. Exit Codes & Command Quirks Reference for Parsers
 

@@ -51,7 +51,7 @@ graph TD
 
 ### 2.2 Pending Architectural Validations (SCOFS Protocol)
 1. **Process Cancellation (Open Test 2.10.3):**
-   * *Status:* Unverified. While `qt-sudo` runs as the desktop user UID, it is untested whether `qt-sudo` cleanly forwards `SIGTERM`/`SIGINT` down to the child `sudo` process group, or whether killing `qt-sudo` leaves the root compilation tree running orphaned in the background. Must be validated in a disposable environment.
+   * *Status:* **Partially verified** (OPEN_QUESTIONS 2.15). With qt-sudo 2.4.1 and the sudo backend, Cancel during a **download** left no root process behind within ~34 s, and prt-get did not continue to the next port. Cancel during **compilation**, the case that matters most, is untested; so is the exit latency.
 2. **Build Directory & `PKGMK_WORK_ROOT` (Conditional):**
    * *Status:* User-specific, not CRUX standard. The variable `PKGMK_WORK_ROOT` exists in the owner's custom `/etc/pkgmk.conf`, not in standard CRUX. Moreover, standard `sudo` resets environment variables (`env_reset`) and will strip `PKGMK_WORK_ROOT` unless explicitly in `env_keep`. OctoCRUX must not assume this variable exists; it should only inspect `/proc/self/mountinfo`, warn when `/usr/ports/work` tmpfs space is low, and classify `ENOSPC` errors cleanly at runtime.
 3. **Package Signing & `signify` Errors:**
@@ -244,7 +244,7 @@ signals:
 ### 5.3 Cancellation Policy (Pending Test 2.10.3)
 - When the user clicks **Cancel**:
   1. OctoCRUX issues `SIGTERM` to the immediate child helper process via `CruxProcessRunner::cancel()` (`m_process->terminate()`), strictly avoiding blunt `SIGKILL`.
-  2. **Crucial Verification Requirement [open]:** Testing must verify whether the elevation wrapper (`qt-sudo` -> `sudo`) relays `SIGTERM` cleanly to the child `prt-get`/`pkgmk` process tree across UIDs, or whether killing `qt-sudo` leaves the root compilation running orphaned in the background. This remains an open question until validated on disposable bare-metal or container environments.
+  2. **Crucial Verification Requirement [partially verified]:** Testing must verify whether the elevation wrapper (`qt-sudo` -> `sudo`) relays `SIGTERM` cleanly to the child `prt-get`/`pkgmk` process tree across UIDs, or whether killing `qt-sudo` leaves the root compilation running orphaned in the background. First real result (OPEN_QUESTIONS 2.15): Cancel during a download (`pkgmk` -> `curl`) left no surviving root process. Cancel during compilation remains open.
   3. If signal relaying fails in testing, process group line discipline via an embedded pseudo-terminal (PTY) will be employed as the UID-independent cancellation mechanism.
   4. Never execute `killall`.
   5. **Stalled cancellation feedback:** if the process is still running `CruxProcessRunner::kDefaultCancelGracePeriodMs` (10 s, `setCancelGracePeriodMs()`) after the request, the runner emits a warning **as an ordinary error line on the output stream**, so it appears in red in the Output tab (and briefly in the status bar) like any other stderr line. It also emits `cancellationStalled(pid, elapsedMs)`, which nothing in the UI uses yet (no dialog, no dedicated indicator). It does **not** escalate to `SIGKILL`. The Cancel button stays enabled while the operation runs; pressing it again resends `SIGTERM` and restarts the grace period.

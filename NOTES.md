@@ -610,6 +610,14 @@ Branch `fix/analyzer-and-runner`, one commit per fix, fast-forwarded into `main`
 - `3a7755a` `test_live_transaction_execution` labelled `slow` (`ctest -LE slow`).
 - Not done (owner-supervised): GUI checklist (§6), first real mutation (§7), cancellation test 2.10.3 (§8).
 
+### 7.6.2 First Real Operations Through OctoCRUX (2026-10-20, owner-driven)
+Details in OPEN_QUESTIONS 2.15:
+- Unlock `rust` (intentional, `rust-bin` in use) and Sync worked.
+- Upgrade with nothing selected: the preview dialog appeared and the owner pressed Apply. No qt-sudo password prompt appeared (sudo credential cache, hypothesis), so the preview is the only guaranteed gate.
+- criu and elfutils failed with footprint mismatches (NEW files only).
+- Cancel during the linux-firmware download stopped the whole root tree; nothing was installed; the Output tab showed "Operation was cancelled by user".
+- Still open: Cancel during compilation; the status bar text overlap.
+
 ### 7.7 Next Step: Phase 5 — System Tray Daemon (`octocrux-notifier`) & Settings
 1. **System Tray Daemon (`octocrux-notifier`):**
    - Lightweight standalone background tray indicator (`QSystemTrayIcon`).
