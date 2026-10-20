@@ -10,6 +10,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QPointer>
 #include <QToolButton>
 #include <QCheckBox>
 #include <QRadioButton>
@@ -72,6 +73,8 @@ private slots:
     void testSyncConfirmRejectStartsNoProcess();
     void testBuildChecksAreKeptPerPortUntilARun();
     void testBuildChecksReachCommandAndResetAfterRun();
+    void testFootprintRetryOfferedForNewOnlyFailures();
+    void testFootprintMissingIsReportedNotOffered();
     void testCloseRefusedDuringOperation();
 
 private:
@@ -86,7 +89,8 @@ private:
     // Searches for name and selects the row whose Name column equals it exactly.
     bool selectPort(const QString &name);
     // Runs fn on the next modal widget (dialog or message box) once it is shown.
-    void onNextModal(const std::function<void(QWidget *)> &fn);
+    // Returns the polling timer so a test that expects no modal can cancel it.
+    QPointer<QTimer> onNextModal(const std::function<void(QWidget *)> &fn);
 
     std::unique_ptr<QTemporaryDir> m_fakeBin;
     QByteArray m_savedPath;
@@ -339,7 +343,7 @@ bool TestMainWindow::selectPort(const QString &name) {
     return false;
 }
 
-void TestMainWindow::onNextModal(const std::function<void(QWidget *)> &fn) {
+QPointer<QTimer> TestMainWindow::onNextModal(const std::function<void(QWidget *)> &fn) {
     auto *timer = new QTimer(this);
     auto deadline = std::make_shared<int>(500); // 500 x 10 ms
     connect(timer, &QTimer::timeout, this, [timer, fn, deadline]() {
@@ -354,6 +358,7 @@ void TestMainWindow::onNextModal(const std::function<void(QWidget *)> &fn) {
         }
     });
     timer->start(10);
+    return timer;
 }
 
 void TestMainWindow::testStatusBarLabelsDoNotOverlap() {
@@ -756,6 +761,98 @@ void TestMainWindow::testBuildChecksReachCommandAndResetAfterRun() {
     QVERIFY(checkBox(info, QStringLiteral("Verify footprint"))->isChecked());
     QVERIFY(checkBox(info, QStringLiteral("Verify signature"))->isChecked());
     m_window->setSearchText(QString());
+}
+
+namespace {
+QString pkgmkFixture(const QString &sourceDir, const QString &name) {
+    QFile f(sourceDir + QStringLiteral("/tests/fixtures/crux3.8/pkgmk-failures/%1.log").arg(name));
+    return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+}
+} // namespace
+
+void TestMainWindow::testFootprintRetryOfferedForNewOnlyFailures() {
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    auto restore = qScopeGuard([this]() { removeFakeTools(); });
+
+    // Real pkgmk output of a NEW-only footprint failure, with one field changed in
+    // memory: the package name in the build target (octo-footprint-new -> a2ps),
+    // so that the retry plans a port that exists in the catalog fixture.
+    QString log = pkgmkFixture(m_sourceDir, QStringLiteral("footprint-new"));
+    QVERIFY(log.contains(QStringLiteral("/octo-footprint-new#")));
+    log.replace(QStringLiteral("/octo-footprint-new#"), QStringLiteral("/a2ps#"));
+
+    QString offerText, previewText;
+    bool cancelIsDefault = false;
+    onNextModal([&](QWidget *w) {
+        auto *box = qobject_cast<QMessageBox*>(w);
+        if (!box || box->objectName() != QLatin1String("footprintRetryMessage")) {
+            if (auto *d = qobject_cast<QDialog*>(w)) d->reject();
+            return;
+        }
+        offerText = box->text();
+        cancelIsDefault = box->defaultButton() == box->button(QMessageBox::Cancel);
+        onNextModal([&](QWidget *w2) {
+            if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(w2)) {
+                previewText = dlg->summaryText();
+            }
+            if (auto *d = qobject_cast<QDialog*>(w2)) d->reject();
+        });
+        for (QAbstractButton *b : box->buttons()) {
+            if (b->text() == QLatin1String("Retry with -in")) b->click();
+        }
+    });
+
+    emit m_adapter->progressChanged(1, 1, QStringLiteral("Installing a2ps"));
+    for (const QString &line : log.split(QLatin1Char('\n'))) {
+        emit m_adapter->outputReceived(line, line.startsWith(QStringLiteral("=======> ERROR")));
+    }
+    emit m_adapter->operationFinished(1, OperationErrorKind::FootprintError, QStringLiteral("Footprint mismatch"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!previewText.isEmpty(), 5000);
+    QVERIFY2(offerText.contains(QStringLiteral("a2ps")), qPrintable(offerText));
+    QVERIFY(cancelIsDefault);
+    QVERIFY2(previewText.contains(QStringLiteral("prt-get depinst --margs=-in a2ps")), qPrintable(previewText));
+    QVERIFY(probeLines().isEmpty());   // preview rejected: nothing ran
+
+    // The exception stays pending (nothing ran) and is visible in a2ps's Information tab.
+    QCOMPARE(m_window->pendingBuildOverrides(QStringLiteral("a2ps")).footprint, FootprintCheck::IgnoreNew);
+    QVERIFY(selectPort(QStringLiteral("a2ps")));
+    QCheckBox *footprint = checkBox(m_window->detailTabs()->widget(0), QStringLiteral("Verify footprint"));
+    QVERIFY(!footprint->isChecked());
+    footprint->setChecked(true); // clean up for later tests
+    QVERIFY(m_window->pendingBuildOverrides(QStringLiteral("a2ps")).isDefault());
+    m_window->setSearchText(QString());
+}
+
+void TestMainWindow::testFootprintMissingIsReportedNotOffered() {
+    const QString log = pkgmkFixture(m_sourceDir, QStringLiteral("footprint")); // NEW + MISSING
+    QVERIFY(!log.isEmpty());
+    bool modalSeen = false;
+    QPointer<QTimer> watcher = onNextModal([&](QWidget *w) {
+        modalSeen = true;
+        if (auto *d = qobject_cast<QDialog*>(w)) d->reject();
+    });
+    // The watcher captures locals: it must not outlive this test.
+    auto stopWatcher = qScopeGuard([&watcher]() { if (watcher) { watcher->stop(); watcher->deleteLater(); } });
+    QPlainTextEdit *out = m_window->outputLogEdit();
+    emit m_adapter->progressChanged(1, 1, QStringLiteral("Installing octo-footprint"));
+    for (const QString &line : log.split(QLatin1Char('\n'))) {
+        emit m_adapter->outputReceived(line, false);
+    }
+    emit m_adapter->operationFinished(1, OperationErrorKind::FootprintError, QStringLiteral("Footprint mismatch"));
+    QTest::qWait(300);
+    QVERIFY(!modalSeen);
+    QVERIFY(out->toPlainText().contains(QStringLiteral("Footprint mismatch with MISSING files in: octo-footprint.")));
+
+    // A cancelled run never triggers the offer either.
+    const QString newOnly = pkgmkFixture(m_sourceDir, QStringLiteral("footprint-new"));
+    emit m_adapter->progressChanged(1, 1, QStringLiteral("Installing octo-footprint-new"));
+    for (const QString &line : newOnly.split(QLatin1Char('\n'))) {
+        emit m_adapter->outputReceived(line, false);
+    }
+    emit m_adapter->operationFinished(15, OperationErrorKind::Cancelled, QStringLiteral("Operation was cancelled by user"));
+    QTest::qWait(300);
+    QVERIFY(!modalSeen);
 }
 
 QTEST_MAIN(TestMainWindow)

@@ -1,14 +1,14 @@
 =======> WARNING: Signature file not found, falling back to old md5sum checking.
 =======> WARNING: Md5sum not found, creating new.
 =======> WARNING: Packages should be built as root.
-=======> Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.OLcC0n/success/pkg/octo-success#1.0-1.pkg.tar.zst'.
+=======> Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/success/pkg/octo-success#1.0-1.pkg.tar.zst'.
 + build
-+ install -d /tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.OLcC0n/success/work/octo-success/pkg/usr/share/octo
++ install -d /tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/success/work/octo-success/pkg/usr/share/octo
 + echo ok
 =======> Build result:
-drwxr-xr-x  0 dani77 dani77      0 Oct 20 22:18 usr/
-drwxr-xr-x  0 dani77 dani77      0 Oct 20 22:18 usr/share/
-drwxr-xr-x  0 dani77 dani77      0 Oct 20 22:18 usr/share/octo/
--rw-r--r--  0 dani77 dani77      3 Oct 20 22:18 usr/share/octo/ok
+drwxr-xr-x  0 dani77 dani77      0 Oct 20 23:47 usr/
+drwxr-xr-x  0 dani77 dani77      0 Oct 20 23:47 usr/share/
+drwxr-xr-x  0 dani77 dani77      0 Oct 20 23:47 usr/share/octo/
+-rw-r--r--  0 dani77 dani77      3 Oct 20 23:47 usr/share/octo/ok
 =======> WARNING: Footprint not found, creating new.
-=======> Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.OLcC0n/success/pkg/octo-success#1.0-1.pkg.tar.zst' succeeded.
+=======> Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/success/pkg/octo-success#1.0-1.pkg.tar.zst' succeeded.

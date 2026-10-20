@@ -199,6 +199,37 @@ QString BuildLogAnalyzer::extractFailingPort(const QString &logOutput) {
     return lastPort;
 }
 
+QList<BuildLogAnalyzer::FootprintFailure> BuildLogAnalyzer::extractFootprintFailures(const QString &logOutput) {
+    static const QString mismatch = kPkgmkError + QStringLiteral("Footprint mismatch found:");
+    QList<FootprintFailure> failures;
+    bool inMismatch = false;
+    bool sawNew = false;
+    bool sawMissing = false;
+    for (const QString &line : logOutput.split(QLatin1Char('\n'))) {
+        if (line == mismatch) {
+            inMismatch = true;
+            sawNew = sawMissing = false;
+            continue;
+        }
+        if (!inMismatch) {
+            continue;
+        }
+        // check_footprint() prints the diff as "NEW       <entry>" / "MISSING   <entry>".
+        if (line.startsWith(QStringLiteral("NEW "))) {
+            sawNew = true;
+        } else if (line.startsWith(QStringLiteral("MISSING "))) {
+            sawMissing = true;
+        } else if (line.startsWith(kPkgmkError)) {
+            const QString port = extractFailingPort(line);
+            if (!port.isEmpty()) {
+                failures.append({port, sawNew && !sawMissing});
+            }
+            inMismatch = false;
+        }
+    }
+    return failures;
+}
+
 QString BuildLogAnalyzer::errorKindToString(OperationErrorKind kind) {
     switch (kind) {
     case OperationErrorKind::None:             return QStringLiteral("Success");

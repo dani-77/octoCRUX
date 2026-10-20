@@ -122,6 +122,13 @@ private:
     bool runTransaction(const QString &title, TransactionPlan plan);
     /** Shows the selected port's pending exceptions in the Information tab. */
     void loadBuildChecks(const QString &portName);
+    /**
+     * After a run whose footprint check failed with NEW entries only, offers to
+     * retry those ports with -in (through the normal preview). MISSING entries
+     * are only reported: -in cannot fix them.
+     */
+    void handleFootprintFailures(const QString &runLog);
+    void offerFootprintRetry(const QStringList &ports);
     /** True if at least one package is outdated and unlocked (Upgrade All has work). */
     bool hasUpgradablePackages() const;
 
@@ -186,6 +193,7 @@ private:
     QHash<QString, BuildCheckOverrides> m_buildOverrides;
     QString m_detailPort;               // port shown in the detail tabs
     QStringList m_overridesInFlight;    // exceptions consumed by the running operation
+    int m_runOutputStart = -1;          // Output text offset where the running operation began
 };
 
 } // namespace OctoCRUX

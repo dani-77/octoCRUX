@@ -242,6 +242,20 @@ signals:
 - Verified offscreen in `test_mainwindow` with a fake `prt-get`/`ports` first in `PATH` that logs every start. Rejecting the preview or the Sync confirmation starts no process; Apply runs exactly the previewed command once. The fakes must win the `PATH` lookup before any button is clicked.
 - Later, optional: append the output of the matching `prt-get --test` command (unprivileged) to the preview.
 
+#### 5.2.2 Per-package build check exceptions
+- **Where:** the Information tab of each port, "Build checks for the next run of this package". The boxes are checked by default:
+  - **Verify footprint.** Unchecked, it offers *Ignore new files only* (`pkgmk -in`, via `prt-get --margs=-in`), which is recommended and the default, or *Ignore all differences* (`-if`).
+  - **Verify md5sum.** Unchecked: `-im`.
+  - **Verify signature.** Unchecked: `-is`, with a red warning label.
+- **Scope:** session only, never saved. An exception applies to the next Install / Upgrade / Upgrade All step that builds the package, including as a dependency. When that run ends (success, failure or cancel), the checks are on again. Rejecting the preview keeps the exception, because nothing ran.
+- **Execution:** prt-get applies options to a whole invocation. `buildBatchedOperations` cuts each ordered target list into runs of consecutive ports with identical exceptions, one invocation each, so the quickdep order (dependencies first) is preserved. Every extra invocation is another elevation, and the preview counts them.
+- **Preview:** it lists the exceptions per package. If any signature check is disabled, a red banner at the top names the packages.
+- **Footprint retry:** after a run that was not cancelled, `BuildLogAnalyzer::extractFootprintFailures` parses its output.
+  - Ports that failed with **NEW entries only** are offered "Retry with -in" (Cancel is the default). The retry goes through the normal preview.
+  - Failures with **MISSING** entries are only reported in the Output, because `-in` cannot fix them, with a pointer to `-if` in the Information tab.
+  - The offer does not depend on the exit code, because prt-get's exit code for a multi-port run with failures is not verified.
+  - Verified in the sandbox: `pkgmk -in` turns a NEW-only mismatch into `New files found:` + `Building '...' succeeded.` (rc 0). The real criu and elfutils logs of 2026-10-20 parse as NEW-only.
+
 ### 5.3 Cancellation Policy (Pending Test 2.10.3)
 - When the user clicks **Cancel**:
   1. OctoCRUX issues `SIGTERM` to the immediate child helper process via `CruxProcessRunner::cancel()` (`m_process->terminate()`), strictly avoiding blunt `SIGKILL`.

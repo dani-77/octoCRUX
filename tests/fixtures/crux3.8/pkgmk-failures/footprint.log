@@ -1,15 +1,15 @@
 =======> WARNING: Signature file not found, falling back to old md5sum checking.
 =======> WARNING: Md5sum not found, creating new.
 =======> WARNING: Packages should be built as root.
-=======> Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.OLcC0n/footprint/pkg/octo-footprint#1.0-1.pkg.tar.zst'.
+=======> Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/footprint/pkg/octo-footprint#1.0-1.pkg.tar.zst'.
 + build
-+ install -d /tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.OLcC0n/footprint/work/octo-footprint/pkg/usr/bin
++ install -d /tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/footprint/work/octo-footprint/pkg/usr/bin
 + printf '#!/bin/sh\n'
-+ chmod 755 /tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.OLcC0n/footprint/work/octo-footprint/pkg/usr/bin/octo-new
++ chmod 755 /tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/footprint/work/octo-footprint/pkg/usr/bin/octo-new
 =======> Build result:
-drwxr-xr-x  0 dani77 dani77      0 Oct 20 22:18 usr/
-drwxr-xr-x  0 dani77 dani77      0 Oct 20 22:18 usr/bin/
--rwxr-xr-x  0 dani77 dani77     10 Oct 20 22:18 usr/bin/octo-new
+drwxr-xr-x  0 dani77 dani77      0 Oct 20 23:47 usr/
+drwxr-xr-x  0 dani77 dani77      0 Oct 20 23:47 usr/bin/
+-rwxr-xr-x  0 dani77 dani77     10 Oct 20 23:47 usr/bin/octo-new
 =======> ERROR: Footprint mismatch found:
 MISSING   drwxr-xr-x      root/root       usr/
 MISSING   drwxr-xr-x      root/root       usr/bin/
@@ -17,4 +17,4 @@ MISSING   -rwxr-xr-x      root/root       usr/bin/octo-old
 NEW       drwxr-xr-x      dani77/dani77   usr/
 NEW       drwxr-xr-x      dani77/dani77   usr/bin/
 NEW       -rwxr-xr-x      dani77/dani77   usr/bin/octo-new
-=======> ERROR: Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.OLcC0n/footprint/pkg/octo-footprint#1.0-1.pkg.tar.zst' failed.
+=======> ERROR: Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/footprint/pkg/octo-footprint#1.0-1.pkg.tar.zst' failed.

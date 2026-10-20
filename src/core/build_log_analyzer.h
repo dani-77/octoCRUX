@@ -34,6 +34,22 @@ public:
      */
     static QString extractFailingPort(const QString &logOutput);
 
+    /** One port whose build failed the footprint check. */
+    struct FootprintFailure {
+        QString port;
+        bool onlyNewEntries = false; // true: pkgmk -in would accept it
+        bool operator==(const FootprintFailure &o) const {
+            return port == o.port && onlyNewEntries == o.onlyNewEntries;
+        }
+    };
+
+    /**
+     * @brief Every footprint failure in a (possibly multi-port) log, in order.
+     * Parsed from "ERROR: Footprint mismatch found:", the NEW/MISSING lines after
+     * it, and the following "ERROR: Building '<target>' failed." line.
+     */
+    static QList<FootprintFailure> extractFootprintFailures(const QString &logOutput);
+
     /**
      * @brief Returns a human-readable string representation of the error kind.
      */

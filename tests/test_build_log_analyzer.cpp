@@ -22,6 +22,7 @@ private slots:
     void testUnpackDetectionAcrossPortsAndChannels();
     void testExtractFailingPort();
     void testExtractSummary();
+    void testExtractFootprintFailures();
 
 private:
     static QString fixture(const QString &name);
@@ -51,6 +52,7 @@ void TestBuildLogAnalyzer::testRealPkgmkFailures_data() {
     QTest::newRow("build-fail")   << "build-fail"   << OperationErrorKind::CompilationError;
     QTest::newRow("enospc")       << "enospc"       << OperationErrorKind::DiskSpaceError;
     QTest::newRow("footprint")    << "footprint"    << OperationErrorKind::FootprintError;
+    QTest::newRow("footprint-new") << "footprint-new" << OperationErrorKind::FootprintError;
     QTest::newRow("md5")          << "md5"          << OperationErrorKind::ChecksumError;
     QTest::newRow("signature")    << "signature"    << OperationErrorKind::SignatureError;
     QTest::newRow("download")     << "download"     << OperationErrorKind::DownloadError;
@@ -143,6 +145,23 @@ void TestBuildLogAnalyzer::testExtractSummary() {
     QVERIFY(BuildLogAnalyzer::extractSummary(QString(), OperationErrorKind::ChecksumError).contains(QStringLiteral("MD5 mismatch")));
     QVERIFY(BuildLogAnalyzer::extractSummary(fixture(QStringLiteral("interrupt")), OperationErrorKind::GeneralError)
                 .contains(QStringLiteral("octo-interrupt")));
+}
+
+void TestBuildLogAnalyzer::testExtractFootprintFailures() {
+    using F = BuildLogAnalyzer::FootprintFailure;
+    // NEW and MISSING (ownership differs): -in would not help.
+    QCOMPARE(BuildLogAnalyzer::extractFootprintFailures(fixture(QStringLiteral("footprint"))),
+             (QList<F>{{QStringLiteral("octo-footprint"), false}}));
+    // NEW only (the criu/elfutils pattern of 2026-10-20): -in accepts it.
+    QCOMPARE(BuildLogAnalyzer::extractFootprintFailures(fixture(QStringLiteral("footprint-new"))),
+             (QList<F>{{QStringLiteral("octo-footprint-new"), true}}));
+    // Several ports in one run, as in a sysup; other failures are not footprint failures.
+    const QString run = fixture(QStringLiteral("footprint-new")) + fixture(QStringLiteral("build-fail"))
+                      + fixture(QStringLiteral("success")) + fixture(QStringLiteral("footprint"));
+    QCOMPARE(BuildLogAnalyzer::extractFootprintFailures(run),
+             (QList<F>{{QStringLiteral("octo-footprint-new"), true}, {QStringLiteral("octo-footprint"), false}}));
+    QVERIFY(BuildLogAnalyzer::extractFootprintFailures(fixture(QStringLiteral("md5"))).isEmpty());
+    QVERIFY(BuildLogAnalyzer::extractFootprintFailures(fixture(QStringLiteral("success"))).isEmpty());
 }
 
 QTEST_MAIN(TestBuildLogAnalyzer)

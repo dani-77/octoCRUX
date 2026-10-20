@@ -28,6 +28,7 @@
 #include <QScrollBar>
 #include <QClipboard>
 #include <QCloseEvent>
+#include <QTimer>
 #include <QTextCursor>
 #include <QPushButton>
 #include <QCheckBox>
@@ -552,6 +553,10 @@ void MainWindow::onBackendTransientOutput(const QString &text) {
 }
 
 void MainWindow::onProgressChanged(int current, int total, const QString &phase) {
+    if (!m_operationInProgress && m_outputLogEdit) {
+        // First progress of an operation: remember where its output starts.
+        m_runOutputStart = m_outputLogEdit->toPlainText().size();
+    }
     m_operationInProgress = true;
     updateActionButtons();
 
@@ -599,6 +604,92 @@ void MainWindow::onOperationFinished(int exitCode, OperationErrorKind errorKind,
     if (exitCode == 0) {
         refreshCatalog();
     }
+
+    // Not conditioned on the exit code: what prt-get returns when one port of a
+    // multi-port run fails is not verified yet.
+    if (errorKind != OperationErrorKind::Cancelled && m_outputLogEdit && m_runOutputStart >= 0) {
+        handleFootprintFailures(m_outputLogEdit->toPlainText().mid(m_runOutputStart));
+    }
+    m_runOutputStart = -1;
+}
+
+void MainWindow::handleFootprintFailures(const QString &runLog) {
+    QStringList newOnly;
+    QStringList withMissing;
+    for (const auto &f : BuildLogAnalyzer::extractFootprintFailures(runLog)) {
+        QStringList &list = f.onlyNewEntries ? newOnly : withMissing;
+        if (!list.contains(f.port)) {
+            list << f.port;
+        }
+    }
+    if (!withMissing.isEmpty() && m_outputLogEdit) {
+        m_outputLogEdit->appendPlainText(QStringLiteral(
+            "[octoCRUX] Footprint mismatch with MISSING files in: %1. Ignoring only new files (-in) "
+            "cannot fix this. Review the build log; if the package is still correct, untick "
+            "\"Verify footprint\" and choose \"Ignore all differences (-if)\" in its Information tab.")
+            .arg(withMissing.join(QStringLiteral(", "))));
+    }
+    if (!newOnly.isEmpty()) {
+        // After this slot returns: never start a new transaction from inside the
+        // backend's finished signal.
+        QTimer::singleShot(0, this, [this, newOnly]() { offerFootprintRetry(newOnly); });
+    }
+}
+
+void MainWindow::offerFootprintRetry(const QStringList &ports) {
+    if (m_operationInProgress) {
+        return;
+    }
+    QMessageBox box(QMessageBox::Question,
+                    QStringLiteral("Footprint check failed"),
+                    QStringLiteral("The build of %1 failed the footprint check with new files only.\n\n"
+                                   "Retry now, ignoring new files (pkgmk -in)? The commands are shown "
+                                   "for confirmation before anything runs.")
+                        .arg(ports.join(QStringLiteral(", "))),
+                    QMessageBox::NoButton, this);
+    box.setObjectName(QStringLiteral("footprintRetryMessage"));
+    QPushButton *retry = box.addButton(QStringLiteral("Retry with -in"), QMessageBox::AcceptRole);
+    QPushButton *cancel = box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(cancel);
+    box.exec();
+    if (box.clickedButton() != retry) {
+        return;
+    }
+
+    // Exceptions for these ports' next run (visible in their Information tab).
+    QStringList toUpgrade;
+    QStringList toInstall;
+    for (const QString &port : ports) {
+        BuildCheckOverrides o = m_buildOverrides.value(port);
+        o.footprint = FootprintCheck::IgnoreNew;
+        m_buildOverrides.insert(port, o);
+        const auto info = m_backend->queryPort(port);
+        if (info.has_value() && info->isInstalled()) {
+            toUpgrade << port;   // a failed upgrade leaves the old version installed
+        } else {
+            toInstall << port;
+        }
+    }
+    loadBuildChecks(m_detailPort);
+
+    TransactionPlan plan = toUpgrade.isEmpty() ? TransactionPlan() : m_planner->planUpgrade(toUpgrade);
+    if (!toInstall.isEmpty()) {
+        const TransactionPlan installPlan = m_planner->planInstall(toInstall);
+        if (toUpgrade.isEmpty()) {
+            plan = installPlan;
+        } else {
+            plan.steps += installPlan.steps;
+            plan.toInstall += installPlan.toInstall;
+            plan.lockedSkipped += installPlan.lockedSkipped;
+            plan.errors += installPlan.errors;
+            plan.criticalWarnings += installPlan.criticalWarnings;
+        }
+    }
+    if (!plan.isValid()) {
+        QMessageBox::warning(this, QStringLiteral("Retry Error"), plan.errors.join(QLatin1Char('\n')));
+        return;
+    }
+    runTransaction(QStringLiteral("Retry %1 ignoring new files").arg(ports.join(QStringLiteral(", "))), plan);
 }
 
 void MainWindow::onRejectedConfigsDetected(const QStringList &rejectedFiles) {

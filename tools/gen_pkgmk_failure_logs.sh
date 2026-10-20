@@ -92,6 +92,18 @@ printf 'drwxr-xr-x\troot/root\tusr/\ndrwxr-xr-x\troot/root\tusr/bin/\n-rwxr-xr-x
     > "$SB/footprint/.footprint"
 run footprint
 
+# Footprint mismatch with NEW entries only (what pkgmk -in tolerates): the
+# .footprint lists the build user's own ownership, so only octo-extra is new.
+port footprint-new
+pkgfile footprint-new '' '	install -d $PKG/usr/bin
+	printf "#!/bin/sh\n" > $PKG/usr/bin/octo-tool
+	printf "#!/bin/sh\n" > $PKG/usr/bin/octo-extra
+	chmod 755 $PKG/usr/bin/octo-tool $PKG/usr/bin/octo-extra'
+OWNER="$(id -un)/$(id -gn)"
+printf 'drwxr-xr-x\t%s\tusr/\ndrwxr-xr-x\t%s\tusr/bin/\n-rwxr-xr-x\t%s\tusr/bin/octo-tool\n' \
+    "$OWNER" "$OWNER" "$OWNER" > "$SB/footprint-new/.footprint"
+run footprint-new
+
 port md5
 printf 'hello\n' > "$SB/md5/data.txt"
 pkgfile md5 'data.txt' '	true'

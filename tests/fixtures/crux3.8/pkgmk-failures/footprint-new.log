@@ -1,0 +1,17 @@
+=======> WARNING: Signature file not found, falling back to old md5sum checking.
+=======> WARNING: Md5sum not found, creating new.
+=======> WARNING: Packages should be built as root.
+=======> Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/footprint-new/pkg/octo-footprint-new#1.0-1.pkg.tar.zst'.
++ build
++ install -d /tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/footprint-new/work/octo-footprint-new/pkg/usr/bin
++ printf '#!/bin/sh\n'
++ printf '#!/bin/sh\n'
++ chmod 755 /tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/footprint-new/work/octo-footprint-new/pkg/usr/bin/octo-tool /tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/footprint-new/work/octo-footprint-new/pkg/usr/bin/octo-extra
+=======> Build result:
+drwxr-xr-x  0 dani77 dani77      0 Oct 20 23:47 usr/
+drwxr-xr-x  0 dani77 dani77      0 Oct 20 23:47 usr/bin/
+-rwxr-xr-x  0 dani77 dani77     10 Oct 20 23:47 usr/bin/octo-extra
+-rwxr-xr-x  0 dani77 dani77     10 Oct 20 23:47 usr/bin/octo-tool
+=======> ERROR: Footprint mismatch found:
+NEW       -rwxr-xr-x      dani77/dani77   usr/bin/octo-extra
+=======> ERROR: Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.b25nul/footprint-new/pkg/octo-footprint-new#1.0-1.pkg.tar.zst' failed.
