@@ -31,7 +31,7 @@ graph TD
 ### Architectural Responsibilities:
 - **Qt UI:** Consumes strictly typed Data Transfer Objects (`PortInfo`, `TransactionPlan`, `BuildEvent`). It never invokes child processes, parses CLI text, or formats shell commands.
 - **Application Operations:** Coordinates user intents, maintains UI view models (`PackageModel`), resolves filter predicates across the three data axes, and builds transaction queues.
-- **CRUX Backend Adapter (`CruxAdapter`):** Owns native tool discovery, process invocation with explicit argument vectors, structured output tokenization, filesystem inspection of port files, and process-group signal routing.
+- **CRUX Backend Adapter (`CruxAdapter`):** Owns native tool discovery, process invocation with explicit argument vectors, structured output tokenization, and filesystem inspection of port files. Cancellation sends `SIGTERM` to the directly spawned process only (the privilege helper); there is no process-group signalling, and whether the helper relays the signal to the root build tree is open test 2.10.3 (see §5.3).
 
 ---
 
