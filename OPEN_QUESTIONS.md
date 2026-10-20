@@ -114,7 +114,7 @@ In accordance with [RESEARCH.md](RESEARCH.md) and the SCOFS protocol in [AGENTS.
   1. **Headless `QProcess` is Mandatory:** Because `qtermwidget6` is not present in standard CRUX setups, OctoCRUX must implement a first-class headless `QProcess` log streaming path, with optional fallback to user-configured external terminal emulators.
   2. **Decided Privilege Direction:** The GUI application always runs unprivileged. Elevation is invoked per-transaction for mutating operations (`ports -u`, `depinst`, `update`, `remove`, `lock`).
 * **Remaining Open Questions:**
-  1. **[open] Interactive Prompts in Builds:** How to handle rare interactive prompts in `Pkgfile` scripts under a headless `QProcess`? (Requires external terminal fallback or lightweight PTY helper).
+  1. **[open] Interactive Prompts in Builds:** How to handle rare interactive prompts in `Pkgfile` scripts under a headless `QProcess`? (Requires external terminal fallback or lightweight PTY helper.) *Interim behaviour [verified with `tests/scripts/fake_interactive_pkgfile.sh`]:* `CruxProcessRunner` closes the child's stdin right after start, so a prompt reads EOF and the build fails visibly instead of hanging forever. Not yet observed through `qt-sudo`/`sudo`/`prt-get`/`pkgmk` with a real interactive port.
   2. **[open] Cross-UID Cancellation:** An unprivileged GUI cannot send `SIGINT`/`SIGTERM` to a root process group (`EPERM`). PTY line discipline (`^C`) or elevation helper signal relaying must be verified in disposable environment.
 
 ### 2.10 `pkginfo -o` Pattern Semantics & POSIX ERE Escaping

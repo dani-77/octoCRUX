@@ -14,6 +14,7 @@ private slots:
     void testLineBufferedStreaming();
     void testErrorExitClassification();
     void testCancelOperation();
+    void testInteractivePromptGetsEof();
 };
 
 void TestCruxProcessRunner::testSuccessfulExecution() {
@@ -112,6 +113,26 @@ void TestCruxProcessRunner::testCancelOperation() {
     const QList<QVariant> args = spyFinished.takeFirst();
     QCOMPARE(args.at(1).value<OperationErrorKind>(), OperationErrorKind::GeneralError);
     QVERIFY(args.at(2).toString().contains(QStringLiteral("cancelled"), Qt::CaseInsensitive));
+}
+
+void TestCruxProcessRunner::testInteractivePromptGetsEof() {
+    CruxProcessRunner runner;
+    QSignalSpy spyFinished(&runner, &CruxProcessRunner::processFinished);
+    QSignalSpy spyOutput(&runner, &CruxProcessRunner::outputReceived);
+
+    const QString script = QStringLiteral(OCTOCRUX_SOURCE_DIR "/tests/scripts/fake_interactive_pkgfile.sh");
+    QVERIFY(runner.startProcess(QStringLiteral("sh"), {script}));
+
+    // Without EOF on stdin the script blocks in 'read' until killed.
+    QVERIFY2(spyFinished.wait(5000), "process blocked reading stdin");
+    QCOMPARE(spyFinished.first().at(0).toInt(), 1);
+
+    QStringList lines;
+    for (const auto &args : spyOutput) {
+        lines << args.at(0).toString();
+    }
+    QVERIFY(lines.contains(QStringLiteral("Accept the license? [y/N]")));
+    QVERIFY(lines.contains(QStringLiteral("stdin: EOF")));
 }
 
 QTEST_MAIN(TestCruxProcessRunner)

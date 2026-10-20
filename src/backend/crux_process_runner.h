@@ -27,6 +27,7 @@ public:
 
     /**
      * @brief Launches the process asynchronously with non-blocking line streaming.
+     * The child's stdin is closed right after start, so reads from it see EOF.
      */
     bool startProcess(
         const QString &program,

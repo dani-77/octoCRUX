@@ -71,7 +71,15 @@ bool CruxProcessRunner::startProcess(
             this, &CruxProcessRunner::onProcessFinished);
 
     m_process->start(program, arguments);
-    return m_process->waitForStarted(2000);
+    if (!m_process->waitForStarted(2000)) {
+        return false;
+    }
+
+    // Nothing is ever written to the child. Close its stdin so an interactive
+    // prompt in a Pkgfile (or anything else reading stdin) gets EOF and fails,
+    // instead of blocking forever on a pipe nobody writes to.
+    m_process->closeWriteChannel();
+    return true;
 }
 
 void CruxProcessRunner::cancel() {
