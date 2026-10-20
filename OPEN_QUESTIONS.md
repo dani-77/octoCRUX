@@ -195,7 +195,7 @@ In accordance with [RESEARCH.md](RESEARCH.md) and the SCOFS protocol in [AGENTS.
   | `prt-get --test update llvm` (locked, outdated) | `0` | `-- Packages updated` / `llvm` / `prt-get: updated successfully`: the dry run **does not refuse a locked port named explicitly** **[verified]**; whether a real `update llvm` also ignores the lock is **[open]** |
   | `prt-get --test sysup` | `0` | 7 ports (`elfutils linux-firmware python3-setuptools xfsprogs volume_key criu pcsclite`); the 4 locked outdated ports are excluded (11 outdated in total) |
   | `prt-get --test remove glibc` | `0` | `-- Packages removed` / `glibc`: **prt-get has no core protection of its own**; OctoCRUX's policy (2.13) is the only guard |
-* **Capture script defect:** `crux_capture_execution.sh` greps `E_[A-Z_]+=`, which misses `E_MD5=6` (digit in the name). The table above was read from the copied `pkgmk` itself.
+* **Capture script defect (fixed):** the 2026-10-20 capture was taken with a `crux_capture_execution.sh` that grepped `E_[A-Z_]+=`, which misses `E_MD5=6` (digit in the name), so its `pkgmk-exitcodes.out` lists 9 codes. The table above was read from the copied `pkgmk` itself. The script now greps `E_[A-Z0-9_]+=` (10 codes on pkgutils 5.40.12).
 
 ---
 

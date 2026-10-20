@@ -62,7 +62,7 @@ note "== pkgmk as shipped (exit codes, messages, phase marker)"
 PKGMK=$(command -v pkgmk 2>/dev/null || true)
 if [ -n "$PKGMK" ] && [ -r "$PKGMK" ]; then
     cp "$PKGMK" "$OUT/files/pkgmk"
-    run pkgmk-exitcodes grep -n -E '^[[:space:]]*E_[A-Z_]+=' "$PKGMK"
+    run pkgmk-exitcodes grep -n -E '^[[:space:]]*E_[A-Z0-9_]+=' "$PKGMK"
     run pkgmk-error-msgs grep -n -E '(error|warning|info) "' "$PKGMK"
     run pkgmk-phase-marker grep -n -E '=+>' "$PKGMK"
     note "exit code definitions: $(wc -l < "$OUT/cmd/pkgmk-exitcodes.out")"
