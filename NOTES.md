@@ -311,7 +311,7 @@ Defined in [`include/octocrux/icruxbackend.h`](include/octocrux/icruxbackend.h):
   4. *Watchdog Orphan Risk:* `CruxProcessRunner` escalated to `SIGKILL` after 3000ms. Sending `SIGKILL` to `qt-sudo` or `sudo` causes the helper to vanish while the child compilation build continues running orphaned as root.
 - **Engine Redesign & Implemented Invariants:**
   1. *Asynchronous Wiring:* `CruxAdapter::executeTransaction` and `syncPortsTree` now instantiate and route strictly through `CruxProcessRunner`. Process launch is non-blocking (`startProcess` returns immediately). Real-time stdout/stderr lines are emitted as `outputReceived` and compilation phases as `progressChanged`. `MainWindow` GUI never blocks.
-  2. *Single-Invocation Transaction Batching:* When `plan.requestedTargets` are provided (e.g. `{"gtk3"}`), the engine issues a single elevated invocation: `qt-sudo -d prt-get depinst target1 target2 ...`. Dependency resolution is delegated entirely to `prt-get` internally. Elevation occurs exactly **once** per transaction.
+  2. *Per-Action Transaction Batching:* `executeTransaction` reads only `plan.steps` (`plan.requestedTargets` is filled by the planner but not used by the executor). Steps are grouped by action and each non-empty group becomes **one** elevated `prt-get` invocation, run in this order: `update <targets>`, `depinst <targets>`, `update -fr <targets>`, `remove <targets>`, `lock <targets>`, `unlock <targets>`. The `depinst` group lists every uninstalled port from the planner's `quickdep` expansion, not just the requested target. A plan with one action type elevates once; a mixed plan (e.g. installing a port with an outdated dependency, i.e. `update` + `depinst`) elevates once **per group**. Whether each elevation shows its own `qt-sudo` dialog is **[open]**; the owner reports that `sudo` asks once per command **[owner-reported]**. *(Corrected 2026-10-20; the original text claimed `requestedTargets` drove a single invocation and that elevation happened exactly once per transaction.)*
   3. *Graceful Signal Termination (No SIGKILL):* Removed `m_killTimer` and `onKillTimeout()`. `cancel()` issues `m_process->terminate()` (`SIGTERM`), allowing elevation helpers and `prt-get` to trap the signal and clean up child builds cleanly.
   4. *POSIX Single-Quote Escaping for `su -c`:* Each command argument is wrapped in POSIX single quotes (`'...'`), with internal single quotes safely escaped as `'\''`, neutralizing shell expansion and command injection.
 - **Verification via Real-Process Integration Test (`tests/test_live_transaction_execution.cpp`):**
@@ -593,7 +593,7 @@ Authoritative protection policy implemented per [`OctoCRUX — Core package prot
 Resolved fatal runner disconnect, password prompt multiplicity, and shell injection:
 - Disconnected `m_runner->run` from `executeTransaction` and `syncPortsTree`; wired to asynchronous `CruxProcessRunner`.
 - Eliminated legacy 30000ms timeout on mutations.
-- Multi-target plans are batched into a single command invocation (`depinst pkg1 pkg2 ...`), prompting for password once.
+- Steps of the same action are batched into one command invocation (`depinst pkg1 pkg2 ...`); a plan mixing actions runs one elevated invocation per action group (see §3.12, corrected 2026-10-20).
 - Replaced dangerous `SIGKILL` escalation watchdog with graceful `SIGTERM` termination.
 - Applied POSIX single-quote shell escaping to `su -c` in `PrivilegeHelper`.
 - Validated via real-process integration test (`test_live_transaction_execution`) running for 34 seconds with line-by-line live streaming, prompt cancellation handling, and probe-log verified single-command execution.
@@ -611,9 +611,9 @@ Branch `fix/analyzer-and-runner`, one commit per fix, fast-forwarded into `main`
 ### 7.7 Next Step: Phase 5 — System Tray Daemon (`octocrux-notifier`) & Settings
 1. **System Tray Daemon (`octocrux-notifier`):**
    - Lightweight standalone background tray indicator (`QSystemTrayIcon`).
-   - Periodic timer polling for available updates via `ports -u` check or diff comparison against installed packages.
+   - Periodic, **read-only** check for outdated packages against the ports tree already on disk: `prt-get printf` with `%i == diff` combined with `%l` (OPEN_QUESTIONS 2.5), never `prt-get diff`. The notifier runs unprivileged and must **not** run `ports -u`: that rewrites `/usr/ports` and needs root, so syncing stays an explicit, elevated user action (the Sync button). The check therefore only sees updates after a sync (by the user or a system cron job); how to present that is **[open]** for the Phase 5 design.
    - Passive notification balloons on new updates found.
    - Context menu to launch `octocrux` or trigger immediate update.
 2. **Settings & Configuration Storage:**
-   - Persistent preferences (`QSettings`) for build directory path (`PKGMK_WORK_ROOT`), preferred privilege helper (`qt-sudo`, `sudo`, `doas`), and check intervals.
+   - Persistent preferences (`QSettings`) for the preferred privilege helper (`qt-sudo`, `sudo`, `doas`) and check intervals. **No build-directory setting:** `PKGMK_WORK_ROOT` is not a CRUX variable (it exists only in the owner's `/etc/pkgmk.conf`) and `sudo` strips it (`env_reset`), see §3.3 item 1 and ARCHITECTURE §2.2. The work directory comes from `pkgmk.conf`; OctoCRUX only inspects its mount (`/proc/self/mountinfo`, `statvfs`).
 
