@@ -8,6 +8,7 @@
 #include <QMainWindow>
 #include <QItemSelection>
 #include <QPointer>
+#include <QHash>
 #include <memory>
 #include <optional>
 
@@ -23,6 +24,9 @@ class QTextBrowser;
 class QPlainTextEdit;
 class QSplitter;
 class QMessageBox;
+class QCheckBox;
+class QRadioButton;
+class QGroupBox;
 class QCloseEvent;
 class QProgressBar;
 QT_END_NAMESPACE
@@ -48,6 +52,9 @@ public:
     QPlainTextEdit* outputLogEdit() const;
 
     void checkPrivilegeHelper();
+
+    /** Build check exceptions chosen for the next run of a package (empty = defaults). */
+    BuildCheckOverrides pendingBuildOverrides(const QString &portName) const;
 
     /** The message shown when a close is refused during an operation (testing). */
     QMessageBox* closeRefusedMessage() const;
@@ -79,6 +86,7 @@ private slots:
     void onUpgradeAllClicked();
     void onToggleLockClicked();
     void onCancelOperationClicked();
+    void onBuildChecksChanged();
     void onCustomContextMenuRequested(const QPoint &pos);
 
 protected:
@@ -107,6 +115,13 @@ private:
      * No process is started here.
      */
     bool confirmTransaction(const QString &title, const TransactionPlan &plan);
+    /**
+     * Applies the pending build check exceptions to the plan, asks for
+     * confirmation and, if accepted, executes it. Returns true if it started.
+     */
+    bool runTransaction(const QString &title, TransactionPlan plan);
+    /** Shows the selected port's pending exceptions in the Information tab. */
+    void loadBuildChecks(const QString &portName);
     /** True if at least one package is outdated and unlocked (Upgrade All has work). */
     bool hasUpgradablePackages() const;
 
@@ -142,6 +157,13 @@ private:
 
     // Detail tab widgets
     QTextBrowser *m_infoBrowser = nullptr;
+    QGroupBox *m_buildChecksBox = nullptr;
+    QCheckBox *m_chkFootprint = nullptr;
+    QRadioButton *m_rbFootprintIgnoreNew = nullptr;
+    QRadioButton *m_rbFootprintIgnoreAll = nullptr;
+    QCheckBox *m_chkMd5 = nullptr;
+    QCheckBox *m_chkSignature = nullptr;
+    QLabel *m_lblSignatureRisk = nullptr;
     QPlainTextEdit *m_filesEdit = nullptr;
     QPlainTextEdit *m_pkgfileEdit = nullptr;
     QPlainTextEdit *m_footprintEdit = nullptr;
@@ -159,6 +181,11 @@ private:
     // The last Output line is a '\r' progress line, to be replaced in place.
     bool m_lastOutputLineTransient = false;
     QPointer<QMessageBox> m_closeRefusedMessage;
+
+    // Per-package build check exceptions for the next run (session only, never saved).
+    QHash<QString, BuildCheckOverrides> m_buildOverrides;
+    QString m_detailPort;               // port shown in the detail tabs
+    QStringList m_overridesInFlight;    // exceptions consumed by the running operation
 };
 
 } // namespace OctoCRUX

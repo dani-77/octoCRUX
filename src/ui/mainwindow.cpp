@@ -30,6 +30,10 @@
 #include <QCloseEvent>
 #include <QTextCursor>
 #include <QPushButton>
+#include <QCheckBox>
+#include <QRadioButton>
+#include <QGroupBox>
+#include <QButtonGroup>
 
 namespace OctoCRUX {
 
@@ -254,10 +258,50 @@ void MainWindow::setupDetailTabs() {
     m_tabWidget = new QTabWidget(m_mainSplitter);
     const QFont monoFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
 
-    // 1. Information Tab
-    m_infoBrowser = new QTextBrowser(m_tabWidget);
+    // 1. Information Tab: port metadata, plus the build checks for its next run
+    auto *infoPage = new QWidget(m_tabWidget);
+    auto *infoLayout = new QVBoxLayout(infoPage);
+    infoLayout->setContentsMargins(0, 0, 0, 0);
+    m_infoBrowser = new QTextBrowser(infoPage);
     m_infoBrowser->setOpenExternalLinks(false);
-    m_tabWidget->addTab(m_infoBrowser, QStringLiteral("Information"));
+    infoLayout->addWidget(m_infoBrowser, 1);
+
+    m_buildChecksBox = new QGroupBox(QStringLiteral("Build checks for the next run of this package"), infoPage);
+    m_buildChecksBox->setToolTip(QStringLiteral(
+        "Unchecking a check affects only the next Install/Upgrade that builds this package. "
+        "Afterwards every check is on again. Nothing runs until you confirm the preview."));
+    auto *checksLayout = new QVBoxLayout(m_buildChecksBox);
+    m_chkFootprint = new QCheckBox(QStringLiteral("Verify footprint"), m_buildChecksBox);
+    m_rbFootprintIgnoreNew = new QRadioButton(QStringLiteral("Ignore new files only (-in, recommended)"), m_buildChecksBox);
+    m_rbFootprintIgnoreAll = new QRadioButton(QStringLiteral("Ignore all differences (-if)"), m_buildChecksBox);
+    auto *footprintMode = new QButtonGroup(m_buildChecksBox);
+    footprintMode->addButton(m_rbFootprintIgnoreNew);
+    footprintMode->addButton(m_rbFootprintIgnoreAll);
+    m_chkMd5 = new QCheckBox(QStringLiteral("Verify md5sum"), m_buildChecksBox);
+    m_chkSignature = new QCheckBox(QStringLiteral("Verify signature"), m_buildChecksBox);
+    m_lblSignatureRisk = new QLabel(QStringLiteral(
+        "Signature check off: the port files and sources cannot be authenticated."), m_buildChecksBox);
+    m_lblSignatureRisk->setObjectName(QStringLiteral("signatureRiskLabel"));
+    m_lblSignatureRisk->setStyleSheet(QStringLiteral("color: #c62828; font-weight: bold;"));
+    m_lblSignatureRisk->setWordWrap(true);
+
+    checksLayout->addWidget(m_chkFootprint);
+    for (QRadioButton *rb : {m_rbFootprintIgnoreNew, m_rbFootprintIgnoreAll}) {
+        auto *row = new QHBoxLayout();
+        row->addSpacing(24);
+        row->addWidget(rb);
+        checksLayout->addLayout(row);
+    }
+    checksLayout->addWidget(m_chkMd5);
+    checksLayout->addWidget(m_chkSignature);
+    checksLayout->addWidget(m_lblSignatureRisk);
+    infoLayout->addWidget(m_buildChecksBox);
+
+    for (QAbstractButton *b : std::initializer_list<QAbstractButton*>{
+             m_chkFootprint, m_rbFootprintIgnoreNew, m_rbFootprintIgnoreAll, m_chkMd5, m_chkSignature}) {
+        connect(b, &QAbstractButton::toggled, this, &MainWindow::onBuildChecksChanged);
+    }
+    m_tabWidget->addTab(infoPage, QStringLiteral("Information"));
 
     // 2. Files Tab
     m_filesEdit = new QPlainTextEdit(m_tabWidget);
@@ -523,6 +567,13 @@ void MainWindow::onProgressChanged(int current, int total, const QString &phase)
 
 void MainWindow::onOperationFinished(int exitCode, OperationErrorKind errorKind, const QString &summary) {
     m_operationInProgress = false;
+    // The exceptions were for this run only: success, failure or cancel, all checks
+    // are on again afterwards.
+    for (const QString &port : std::as_const(m_overridesInFlight)) {
+        m_buildOverrides.remove(port);
+    }
+    m_overridesInFlight.clear();
+    loadBuildChecks(m_detailPort);
     updateActionButtons();
 
     if (m_progressBar) {
@@ -593,8 +644,10 @@ void MainWindow::updateActionButtons() {
         m_btnLock->setEnabled(false);
         m_btnRefresh->setEnabled(false);
         m_btnCancel->setEnabled(true);
+        if (m_buildChecksBox) m_buildChecksBox->setEnabled(false);
         return;
     }
+    if (m_buildChecksBox) m_buildChecksBox->setEnabled(!m_detailPort.isEmpty());
 
     // Independent of the selection: the system-wide upgrade.
     m_btnUpgradeAll->setEnabled(hasUpgradablePackages());
@@ -667,14 +720,7 @@ void MainWindow::onInstallClicked() {
         QMessageBox::warning(this, QStringLiteral("Installation Error"), plan.errors.join(QLatin1Char('\n')));
         return;
     }
-    if (!confirmTransaction(QStringLiteral("Confirm installation of %1").arg(portOpt->name), plan)) {
-        return;
-    }
-
-    if (m_outputLogEdit && m_tabWidget) {
-        m_tabWidget->setCurrentWidget(m_outputLogEdit);
-    }
-    m_backend->executeTransaction(plan);
+    runTransaction(QStringLiteral("Confirm installation of %1").arg(portOpt->name), plan);
 }
 
 void MainWindow::onRemoveClicked() {
@@ -689,14 +735,7 @@ void MainWindow::onRemoveClicked() {
     }
 
     // Critical warnings (e.g. installed dependents) are listed in the preview.
-    if (!confirmTransaction(QStringLiteral("Confirm removal of %1").arg(portOpt->name), plan)) {
-        return;
-    }
-
-    if (m_outputLogEdit && m_tabWidget) {
-        m_tabWidget->setCurrentWidget(m_outputLogEdit);
-    }
-    m_backend->executeTransaction(plan);
+    runTransaction(QStringLiteral("Confirm removal of %1").arg(portOpt->name), plan);
 }
 
 void MainWindow::onUpgradeClicked() {
@@ -710,14 +749,7 @@ void MainWindow::onUpgradeClicked() {
         QMessageBox::warning(this, QStringLiteral("Upgrade Error"), plan.errors.join(QLatin1Char('\n')));
         return;
     }
-    if (!confirmTransaction(QStringLiteral("Confirm upgrade of %1").arg(portOpt->name), plan)) {
-        return;
-    }
-
-    if (m_outputLogEdit && m_tabWidget) {
-        m_tabWidget->setCurrentWidget(m_outputLogEdit);
-    }
-    m_backend->executeTransaction(plan);
+    runTransaction(QStringLiteral("Confirm upgrade of %1").arg(portOpt->name), plan);
 }
 
 void MainWindow::onUpgradeAllClicked() {
@@ -727,14 +759,7 @@ void MainWindow::onUpgradeAllClicked() {
         QMessageBox::warning(this, QStringLiteral("Upgrade Error"), plan.errors.join(QLatin1Char('\n')));
         return;
     }
-    if (!confirmTransaction(QStringLiteral("Confirm upgrade of all outdated packages"), plan)) {
-        return;
-    }
-
-    if (m_outputLogEdit && m_tabWidget) {
-        m_tabWidget->setCurrentWidget(m_outputLogEdit);
-    }
-    m_backend->executeTransaction(plan);
+    runTransaction(QStringLiteral("Confirm upgrade of all outdated packages"), plan);
 }
 
 bool MainWindow::hasUpgradablePackages() const {
@@ -761,6 +786,80 @@ void MainWindow::onToggleLockClicked() {
 
 void MainWindow::onCancelOperationClicked() {
     m_backend->cancelActiveOperation();
+}
+
+bool MainWindow::runTransaction(const QString &title, TransactionPlan plan) {
+    // Attach the pending exceptions to the steps that build a package.
+    QStringList consumed;
+    for (TransactionStep &step : plan.steps) {
+        const bool builds = step.action == TransactionAction::Install
+                         || step.action == TransactionAction::Upgrade
+                         || step.action == TransactionAction::Reinstall;
+        const auto it = m_buildOverrides.constFind(step.portName);
+        if (builds && it != m_buildOverrides.constEnd()) {
+            step.overrides = it.value();
+            if (!consumed.contains(step.portName)) {
+                consumed << step.portName;
+            }
+        }
+    }
+
+    if (!confirmTransaction(title, plan)) {
+        return false; // nothing ran: the exceptions stay pending
+    }
+
+    m_overridesInFlight = consumed;
+    if (m_outputLogEdit && m_tabWidget) {
+        m_tabWidget->setCurrentWidget(m_outputLogEdit);
+    }
+    m_backend->executeTransaction(plan);
+    return true;
+}
+
+BuildCheckOverrides MainWindow::pendingBuildOverrides(const QString &portName) const {
+    return m_buildOverrides.value(portName);
+}
+
+void MainWindow::loadBuildChecks(const QString &portName) {
+    if (!m_buildChecksBox) {
+        return;
+    }
+    const BuildCheckOverrides o = m_buildOverrides.value(portName);
+    const QList<QAbstractButton*> buttons = {m_chkFootprint, m_rbFootprintIgnoreNew, m_rbFootprintIgnoreAll,
+                                             m_chkMd5, m_chkSignature};
+    for (QAbstractButton *b : buttons) {
+        b->blockSignals(true);
+    }
+    m_chkFootprint->setChecked(o.footprint == FootprintCheck::Full);
+    m_rbFootprintIgnoreAll->setChecked(o.footprint == FootprintCheck::Ignore);
+    m_rbFootprintIgnoreNew->setChecked(o.footprint != FootprintCheck::Ignore);
+    m_chkMd5->setChecked(!o.ignoreMd5);
+    m_chkSignature->setChecked(!o.ignoreSignature);
+    for (QAbstractButton *b : buttons) {
+        b->blockSignals(false);
+    }
+    m_rbFootprintIgnoreNew->setEnabled(o.footprint != FootprintCheck::Full);
+    m_rbFootprintIgnoreAll->setEnabled(o.footprint != FootprintCheck::Full);
+    m_lblSignatureRisk->setVisible(o.ignoreSignature);
+    m_buildChecksBox->setEnabled(!portName.isEmpty() && !m_operationInProgress);
+}
+
+void MainWindow::onBuildChecksChanged() {
+    if (m_detailPort.isEmpty()) {
+        return;
+    }
+    BuildCheckOverrides o;
+    if (!m_chkFootprint->isChecked()) {
+        o.footprint = m_rbFootprintIgnoreAll->isChecked() ? FootprintCheck::Ignore : FootprintCheck::IgnoreNew;
+    }
+    o.ignoreMd5 = !m_chkMd5->isChecked();
+    o.ignoreSignature = !m_chkSignature->isChecked();
+    if (o.isDefault()) {
+        m_buildOverrides.remove(m_detailPort);
+    } else {
+        m_buildOverrides.insert(m_detailPort, o);
+    }
+    loadBuildChecks(m_detailPort); // refresh dependent widgets (radios, risk label)
 }
 
 bool MainWindow::confirmTransaction(const QString &title, const TransactionPlan &plan) {
@@ -887,6 +986,9 @@ void MainWindow::updateStatusBar() {
 }
 
 void MainWindow::loadPortDetails(const PortInfo &port) {
+    m_detailPort = port.name;
+    loadBuildChecks(port.name);
+
     // 1. Information Tab (Formatted HTML)
     QString statusColor = QStringLiteral("#555555");
     if (port.installStatus == InstallStatus::Installed) {
@@ -980,6 +1082,8 @@ void MainWindow::loadPortDetails(const PortInfo &port) {
 }
 
 void MainWindow::clearPortDetails() {
+    m_detailPort.clear();
+    loadBuildChecks(QString());
     m_infoBrowser->setHtml(QStringLiteral("<p style='color:gray; font-style:italic;'>Select a port from the list above to view details.</p>"));
     m_filesEdit->setPlainText(QStringLiteral("No package selected."));
     m_pkgfileEdit->setPlainText(QStringLiteral("# No package selected."));

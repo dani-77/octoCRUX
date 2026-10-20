@@ -11,6 +11,9 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QToolButton>
+#include <QCheckBox>
+#include <QRadioButton>
+#include <QGroupBox>
 #include <functional>
 #include <QFile>
 #include <QTextStream>
@@ -67,6 +70,8 @@ private slots:
     void testUpgradePreviewGatesExecution();
     void testInstallPreviewRejectStartsNoProcess();
     void testSyncConfirmRejectStartsNoProcess();
+    void testBuildChecksAreKeptPerPortUntilARun();
+    void testBuildChecksReachCommandAndResetAfterRun();
     void testCloseRefusedDuringOperation();
 
 private:
@@ -209,7 +214,7 @@ void TestMainWindow::testPortSelectionUpdatesDetailTabs() {
     view->selectRow(0);
 
     // Get detail widgets from tabs
-    auto *infoBrowser = qobject_cast<QTextBrowser*>(tabs->widget(0));
+    auto *infoBrowser = tabs->widget(0)->findChild<QTextBrowser*>();
     auto *pkgfileEdit = qobject_cast<QPlainTextEdit*>(tabs->widget(2));
     auto *footprintEdit = qobject_cast<QPlainTextEdit*>(tabs->widget(3));
 
@@ -648,6 +653,109 @@ void TestMainWindow::testSyncConfirmRejectStartsNoProcess() {
     QTest::qWait(200);
     QVERIFY(probeLines().isEmpty());
     QCOMPARE(spyFinished.count(), 0);
+}
+
+namespace {
+QCheckBox* checkBox(QWidget *root, const QString &text) {
+    for (QCheckBox *c : root->findChildren<QCheckBox*>()) {
+        if (c->text() == text) return c;
+    }
+    return nullptr;
+}
+QRadioButton* radio(QWidget *root, const QString &prefix) {
+    for (QRadioButton *r : root->findChildren<QRadioButton*>()) {
+        if (r->text().startsWith(prefix)) return r;
+    }
+    return nullptr;
+}
+} // namespace
+
+void TestMainWindow::testBuildChecksAreKeptPerPortUntilARun() {
+    QWidget *info = m_window->detailTabs()->widget(0);
+    QCheckBox *footprint = checkBox(info, QStringLiteral("Verify footprint"));
+    QCheckBox *md5 = checkBox(info, QStringLiteral("Verify md5sum"));
+    QCheckBox *signature = checkBox(info, QStringLiteral("Verify signature"));
+    QRadioButton *ignoreNew = radio(info, QStringLiteral("Ignore new files only"));
+    QRadioButton *ignoreAll = radio(info, QStringLiteral("Ignore all differences"));
+    QLabel *risk = info->findChild<QLabel*>(QStringLiteral("signatureRiskLabel"));
+    QVERIFY(footprint && md5 && signature && ignoreNew && ignoreAll && risk);
+
+    // Defaults: every check on; footprint mode choices only matter when it is off.
+    QVERIFY(selectPort(QStringLiteral("a2ps")));
+    QVERIFY(footprint->isChecked() && md5->isChecked() && signature->isChecked());
+    QVERIFY(!ignoreNew->isEnabled() && !ignoreAll->isEnabled());
+    QVERIFY(risk->isHidden());
+
+    footprint->setChecked(false);
+    QVERIFY(ignoreNew->isEnabled() && ignoreNew->isChecked()); // -in is the default choice
+    md5->setChecked(false);
+    signature->setChecked(false);
+    QVERIFY(!risk->isHidden());
+    BuildCheckOverrides o = m_window->pendingBuildOverrides(QStringLiteral("a2ps"));
+    QCOMPARE(o.footprint, FootprintCheck::IgnoreNew);
+    QVERIFY(o.ignoreMd5 && o.ignoreSignature);
+
+    // Another port shows its own (default) checks; coming back restores a2ps's.
+    QVERIFY(selectPort(QStringLiteral("gtk3")));
+    QVERIFY(footprint->isChecked() && md5->isChecked() && signature->isChecked());
+    QVERIFY(m_window->pendingBuildOverrides(QStringLiteral("gtk3")).isDefault());
+    QVERIFY(selectPort(QStringLiteral("a2ps")));
+    QVERIFY(!footprint->isChecked() && !md5->isChecked() && !signature->isChecked());
+
+    // Re-checking everything removes the exception.
+    footprint->setChecked(true);
+    md5->setChecked(true);
+    signature->setChecked(true);
+    QVERIFY(m_window->pendingBuildOverrides(QStringLiteral("a2ps")).isDefault());
+    m_window->setSearchText(QString());
+}
+
+void TestMainWindow::testBuildChecksReachCommandAndResetAfterRun() {
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    auto restore = qScopeGuard([this]() { removeFakeTools(); });
+    QWidget *info = m_window->detailTabs()->widget(0);
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+
+    QVERIFY(selectPort(QStringLiteral("a2ps")));
+    checkBox(info, QStringLiteral("Verify footprint"))->setChecked(false);   // -> -in
+    checkBox(info, QStringLiteral("Verify signature"))->setChecked(false);   // -> -is
+    QToolButton *install = toolButton(QStringLiteral("Install"));
+    QVERIFY(install && install->isEnabled());
+
+    // 1. The preview shows the exact flags and the red banner; Cancel keeps the exceptions.
+    QString summary;
+    bool banner = false;
+    onNextModal([&](QWidget *w) {
+        if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(w)) {
+            summary = dlg->summaryText();
+            banner = dlg->signatureWarning() != nullptr;
+            dlg->reject();
+        } else if (auto *d = qobject_cast<QDialog*>(w)) {
+            d->reject();
+        }
+    });
+    install->click();
+    QVERIFY2(summary.contains(QStringLiteral("prt-get depinst -is --margs=-in a2ps")), qPrintable(summary));
+    QVERIFY(banner);
+    QVERIFY(probeLines().isEmpty());
+    QVERIFY(!m_window->pendingBuildOverrides(QStringLiteral("a2ps")).isDefault());
+
+    // 2. Apply runs exactly those flags; afterwards every check is on again.
+    onNextModal([&](QWidget *w) {
+        if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(w)) {
+            dlg->applyButton()->click();
+        } else if (auto *d = qobject_cast<QDialog*>(w)) {
+            d->reject();
+        }
+    });
+    install->click();
+    QVERIFY(spyFinished.wait(5000));
+    QCOMPARE(probeLines(), QStringList{QStringLiteral("depinst -is --margs=-in a2ps")});
+    QVERIFY(m_window->pendingBuildOverrides(QStringLiteral("a2ps")).isDefault());
+    QVERIFY(selectPort(QStringLiteral("a2ps")));
+    QVERIFY(checkBox(info, QStringLiteral("Verify footprint"))->isChecked());
+    QVERIFY(checkBox(info, QStringLiteral("Verify signature"))->isChecked());
+    m_window->setSearchText(QString());
 }
 
 QTEST_MAIN(TestMainWindow)
