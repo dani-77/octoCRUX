@@ -225,6 +225,8 @@ signals:
   2. **Crucial Verification Requirement [open]:** Testing must verify whether the elevation wrapper (`qt-sudo` -> `sudo`) relays `SIGTERM` cleanly to the child `prt-get`/`pkgmk` process tree across UIDs, or whether killing `qt-sudo` leaves the root compilation running orphaned in the background. This remains an open question until validated on disposable bare-metal or container environments.
   3. If signal relaying fails in testing, process group line discipline via an embedded pseudo-terminal (PTY) will be employed as the UID-independent cancellation mechanism.
   4. Never execute `killall`.
+  5. **Stalled cancellation feedback:** if the process is still running `CruxProcessRunner::kDefaultCancelGracePeriodMs` (10 s, `setCancelGracePeriodMs()`) after the request, the runner emits `cancellationStalled(pid, elapsedMs)` and a warning line on the output stream (shown in red in the Output tab). It does **not** escalate to `SIGKILL`. The Cancel button stays enabled while the operation runs; pressing it again resends `SIGTERM` and restarts the grace period.
+  6. **Known gap [open]:** `~CruxProcessRunner()` sends `SIGTERM`, waits 1 s, then destroys the `QProcess`, whose destructor kills (`SIGKILL`) a child that is still running. Closing OctoCRUX during an operation can therefore still `SIGKILL` the helper. The intended behaviour on window close (refuse, warn, or detach) is an owner decision.
 
 ### 5.4 Post-Transaction Health Checks
 After any transaction completes:

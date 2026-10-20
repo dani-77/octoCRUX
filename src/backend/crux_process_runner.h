@@ -37,20 +37,32 @@ public:
     );
 
     /**
-     * @brief Cancels the active process gracefully with SIGTERM/terminate.
-     * Does not send SIGKILL to prevent leaving orphaned root child build processes.
+     * @brief Requests cancellation of the active process with SIGTERM (QProcess::terminate).
+     * Never escalates to SIGKILL: killing the privilege helper could leave the root
+     * build tree running unsupervised. If the process is still alive after
+     * cancelGracePeriodMs(), cancellationStalled() and a warning line are emitted.
+     * Calling cancel() again resends SIGTERM and restarts the grace period.
      */
     void cancel();
+
+    /** Default delay between a cancellation request and the "still running" warning. */
+    static constexpr int kDefaultCancelGracePeriodMs = 10000;
+
+    void setCancelGracePeriodMs(int ms);
+    int cancelGracePeriodMs() const;
 
 signals:
     void outputReceived(const QString &line, bool isError);
     void phaseChanged(const QString &phase);
     void processFinished(int exitCode, OperationErrorKind errorKind, const QString &summary);
+    /** The process ignored a cancellation request for the whole grace period. */
+    void cancellationStalled(qint64 pid, int elapsedMs);
 
 private slots:
     void onReadyReadStandardOutput();
     void onReadyReadStandardError();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
+    void onCancelGracePeriodElapsed();
 
 private:
     void processOutputBuffer(QByteArray &buffer, bool isError);
@@ -64,6 +76,8 @@ private:
     OperationErrorKind m_errorKind = OperationErrorKind::None;
     QString m_summary;
     bool m_wasCancelled = false;
+
+    QTimer m_cancelWatchdog;
 };
 
 } // namespace OctoCRUX

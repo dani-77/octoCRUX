@@ -15,6 +15,7 @@ private slots:
     void testErrorExitClassification();
     void testCancelOperation();
     void testInteractivePromptGetsEof();
+    void testCancelStalledWarnsWithoutKill();
 };
 
 void TestCruxProcessRunner::testSuccessfulExecution() {
@@ -133,6 +134,47 @@ void TestCruxProcessRunner::testInteractivePromptGetsEof() {
     }
     QVERIFY(lines.contains(QStringLiteral("Accept the license? [y/N]")));
     QVERIFY(lines.contains(QStringLiteral("stdin: EOF")));
+}
+
+void TestCruxProcessRunner::testCancelStalledWarnsWithoutKill() {
+    CruxProcessRunner runner;
+    runner.setCancelGracePeriodMs(500);
+    QSignalSpy spyFinished(&runner, &CruxProcessRunner::processFinished);
+    QSignalSpy spyStalled(&runner, &CruxProcessRunner::cancellationStalled);
+    QSignalSpy spyOutput(&runner, &CruxProcessRunner::outputReceived);
+
+    const QString script = QStringLiteral(OCTOCRUX_SOURCE_DIR "/tests/scripts/fake_stubborn_helper.sh");
+    QVERIFY(runner.startProcess(QStringLiteral("sh"), {script}));
+
+    auto sawLine = [&spyOutput](const QString &needle) {
+        for (const auto &args : spyOutput) {
+            if (args.at(0).toString().contains(needle)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    // Wait until the trap is installed before signalling.
+    QTRY_VERIFY_WITH_TIMEOUT(sawLine(QStringLiteral("fake helper: ready")), 5000);
+
+    runner.cancel();
+
+    // The first SIGTERM is ignored: after the grace period the runner warns, keeps
+    // the process alive (no SIGKILL) and stays cancellable.
+    QVERIFY2(spyStalled.wait(5000), "no cancellationStalled after the grace period");
+    QCOMPARE(spyStalled.first().at(1).toInt(), 500);
+    QVERIFY(runner.isRunning());
+    QVERIFY(spyFinished.isEmpty());
+    QVERIFY(sawLine(QStringLiteral("fake helper: SIGTERM ignored")));
+    QVERIFY(sawLine(QStringLiteral("still running")));
+
+    // A second cancel resends SIGTERM, which this helper honours.
+    runner.cancel();
+    QVERIFY(spyFinished.wait(5000));
+    QCOMPARE(spyFinished.first().at(0).toInt(), 143);
+    QVERIFY(spyFinished.first().at(2).toString().contains(QStringLiteral("cancelled"), Qt::CaseInsensitive));
+    QVERIFY(sawLine(QStringLiteral("fake helper: second SIGTERM, exiting")));
+    QCOMPARE(spyStalled.count(), 1);
 }
 
 QTEST_MAIN(TestCruxProcessRunner)

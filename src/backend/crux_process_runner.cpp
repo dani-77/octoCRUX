@@ -8,6 +8,10 @@ namespace OctoCRUX {
 CruxProcessRunner::CruxProcessRunner(QObject *parent)
     : QObject(parent)
 {
+    m_cancelWatchdog.setSingleShot(true);
+    m_cancelWatchdog.setInterval(kDefaultCancelGracePeriodMs);
+    connect(&m_cancelWatchdog, &QTimer::timeout,
+            this, &CruxProcessRunner::onCancelGracePeriodElapsed);
 }
 
 CruxProcessRunner::~CruxProcessRunner() {
@@ -37,6 +41,14 @@ QString CruxProcessRunner::capturedLog() const {
     return m_accumulatedLog;
 }
 
+void CruxProcessRunner::setCancelGracePeriodMs(int ms) {
+    m_cancelWatchdog.setInterval(ms);
+}
+
+int CruxProcessRunner::cancelGracePeriodMs() const {
+    return m_cancelWatchdog.interval();
+}
+
 bool CruxProcessRunner::startProcess(
     const QString &program,
     const QStringList &arguments,
@@ -54,6 +66,7 @@ bool CruxProcessRunner::startProcess(
     m_stdoutBuffer.clear();
     m_stderrBuffer.clear();
     m_wasCancelled = false;
+    m_cancelWatchdog.stop();
 
     m_process = std::make_unique<QProcess>();
 
@@ -90,8 +103,29 @@ void CruxProcessRunner::cancel() {
     m_wasCancelled = true;
     emit outputReceived(QStringLiteral("\n[octoCRUX] Cancellation requested by user. Terminating process...\n"), true);
 
-    // Request graceful termination (SIGTERM on Linux)
+    // Request graceful termination (SIGTERM on Linux). This reaches only the direct
+    // child (the privilege helper); whether it relays the signal to the root build
+    // tree is open test 2.10.3.
     m_process->terminate();
+    m_cancelWatchdog.start();
+}
+
+void CruxProcessRunner::onCancelGracePeriodElapsed() {
+    if (!isRunning()) {
+        return;
+    }
+
+    const qint64 pid = m_process->processId();
+    const int elapsedMs = m_cancelWatchdog.interval();
+    emit outputReceived(QStringLiteral(
+        "[octoCRUX] Warning: process %1 (%2) is still running %3 s after the cancellation request. "
+        "OctoCRUX does not force-kill it: killing the privilege helper could leave root build "
+        "processes running unsupervised. Press Cancel again to resend the request, or wait. "
+        "If it does not stop, check 'ps -ef' for prt-get/pkgmk and stop them from a root terminal.")
+        .arg(pid)
+        .arg(m_process->program())
+        .arg(elapsedMs / 1000.0, 0, 'g', 3), true);
+    emit cancellationStalled(pid, elapsedMs);
 }
 
 void CruxProcessRunner::processOutputBuffer(QByteArray &buffer, bool isError) {
@@ -132,6 +166,8 @@ void CruxProcessRunner::onReadyReadStandardError() {
 }
 
 void CruxProcessRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus) {
+    m_cancelWatchdog.stop();
+
     // Flush any remaining buffers
     if (!m_stdoutBuffer.isEmpty()) {
         const QString line = QString::fromUtf8(m_stdoutBuffer);
