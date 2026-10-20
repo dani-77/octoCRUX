@@ -506,12 +506,18 @@ void MainWindow::onOperationFinished(int exitCode, OperationErrorKind errorKind,
 }
 
 void MainWindow::onRejectedConfigsDetected(const QStringList &rejectedFiles) {
+    // Escape each file name, then join with real line breaks: escaping after the
+    // join turned the <br/> separators into visible text.
+    QStringList escaped;
+    for (const QString &file : rejectedFiles) {
+        escaped << file.toHtmlEscaped();
+    }
     if (m_outputLogEdit) {
         m_outputLogEdit->appendHtml(QStringLiteral(
             "<br/><span style='color:#ffa726; font-weight:bold;'>"
             "[octoCRUX ALERT] Rejected configuration file(s) found in /var/lib/pkg/rejected:<br/>"
             "%1</span><br/>"
-        ).arg(rejectedFiles.join(QStringLiteral("<br/>")).toHtmlEscaped()));
+        ).arg(escaped.join(QStringLiteral("<br/>"))));
     }
     statusBar()->showMessage(
         QStringLiteral("Warning: %1 rejected config(s) found in /var/lib/pkg/rejected!").arg(rejectedFiles.size()),

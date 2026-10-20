@@ -57,6 +57,7 @@ private slots:
     void testPortSelectionUpdatesDetailTabs();
     void testLiveExecutionStreaming();
     void testStatusBarLabelsDoNotOverlap();
+    void testRejectedConfigsAlertIsReadable();
     void testPreviewDescribe();
     void testUpgradeWithNothingToDoStartsNoProcess();
     void testUpgradePreviewGatesExecution();
@@ -350,6 +351,18 @@ void TestMainWindow::testStatusBarLabelsDoNotOverlap() {
              qPrintable(QStringLiteral("summary %1,%2 %3x%4 overlaps filter %5,%6 %7x%8")
                  .arg(summary->x()).arg(summary->y()).arg(summary->width()).arg(summary->height())
                  .arg(filter->x()).arg(filter->y()).arg(filter->width()).arg(filter->height())));
+}
+
+void TestMainWindow::testRejectedConfigsAlertIsReadable() {
+    QPlainTextEdit *log = m_window->outputLogEdit();
+    const int before = log->toPlainText().size();
+    emit m_adapter->rejectedConfigsDetected({QStringLiteral("/var/lib/pkg/rejected/etc/passwd"),
+                                             QStringLiteral("/var/lib/pkg/rejected/etc/a&b<c>")});
+    const QString added = log->toPlainText().mid(before);
+    QVERIFY2(!added.contains(QStringLiteral("<br/>")), qPrintable(added));
+    QVERIFY(added.contains(QStringLiteral("/var/lib/pkg/rejected/etc/passwd")));
+    // File names are shown literally, not interpreted as HTML.
+    QVERIFY2(added.contains(QStringLiteral("/var/lib/pkg/rejected/etc/a&b<c>")), qPrintable(added));
 }
 
 void TestMainWindow::testPreviewDescribe() {
