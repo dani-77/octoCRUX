@@ -45,6 +45,14 @@ public:
     virtual PrivilegeHelperType privilegeHelperType() const { return PrivilegeHelperType::None; }
 
     // --- Mutations & Execution ---
+    /**
+     * @brief The exact command lines executeTransaction(plan) would run, in order,
+     * each already wrapped by the privilege helper. Pure: starts no process.
+     * Used to show the user what will run before any elevation happens.
+     */
+    virtual QList<QStringList> transactionCommands(const TransactionPlan &plan) const = 0;
+    /** The exact (wrapped) command line syncPortsTree() would run. */
+    virtual QStringList syncPortsCommand() const = 0;
     virtual bool executeTransaction(const TransactionPlan &plan) = 0;
     virtual bool syncPortsTree() = 0;
     virtual bool lockPort(const QString &portName) = 0;

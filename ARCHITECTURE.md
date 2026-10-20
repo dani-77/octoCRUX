@@ -203,8 +203,15 @@ signals:
 
 ### 5.2 Privilege Escalation Flow
 ```
-[User clicks Apply]
+[User clicks Install / Upgrade / Remove]
         |
+        v
+[TransactionPlanner builds the plan]  (no process)
+        |
+        v
+[TransactionPreviewDialog]            (no process; Cancel is the default)
+        | shows ICruxBackend::transactionCommands(plan): exact argv, in order
+        | user presses Apply  -- Cancel / Esc / close => nothing runs
         v
 [OctoCRUX UI (UID 1000)]
         | launches QProcess with configured helper & flags:
@@ -218,6 +225,21 @@ signals:
         v
 [prt-get -> pkgmk -> make -> gcc] (writes to /var/cache/ccache, signs with signify)
 ```
+
+#### 5.2.1 Transaction Preview (before any elevation)
+- **Install, Upgrade, Remove** always open `TransactionPreviewDialog` before anything runs. It shows:
+  - the exact command lines in execution order, from `ICruxBackend::transactionCommands(plan)`. `CruxAdapter` builds them with the same function `executeTransaction()` uses (`buildBatchedOperations`), already wrapped by the privilege helper, so the preview cannot drift from what runs;
+  - the number of elevated invocations. Whether each one asks for authentication is not verified, so the dialog says "may ask";
+  - the ports to install, update, reinstall and remove, and the ports skipped because they are locked;
+  - for removals, the installed dependents affected, both direct and the recursive cascade;
+  - warnings: the plan's critical warnings, ports with `pre-install`/`post-install` scripts (`%E`/`%O`), and the work directory mount (tmpfs or not) with its free space, for operations that build.
+  Cancel is the default button.
+- A plan with no commands (e.g. Upgrade when every outdated port is locked) shows "Nothing to execute" with the locked ports, and starts nothing.
+- Core packages never reach the dialog: the plan is invalid, and the existing error box reports it.
+- **Sync** (`ports -u`) uses a simple confirmation that shows the command; Cancel is the default. It rewrites the ports tree, not installed packages.
+- **Lock/Unlock** run without confirmation (reversible with one click).
+- Verified offscreen in `test_mainwindow` with a fake `prt-get`/`ports` first in `PATH` that logs every start. Rejecting the preview or the Sync confirmation starts no process; Apply runs exactly the previewed command once. The fakes must win the `PATH` lookup before any button is clicked.
+- Later, optional: append the output of the matching `prt-get --test` command (unprivileged) to the preview.
 
 ### 5.3 Cancellation Policy (Pending Test 2.10.3)
 - When the user clicks **Cancel**:

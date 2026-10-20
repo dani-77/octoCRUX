@@ -1,5 +1,14 @@
 #include <QTest>
 #include <QMessageBox>
+#include <QApplication>
+#include <QPushButton>
+#include <QScopeGuard>
+#include <QSignalSpy>
+#include <QStandardPaths>
+#include <QTemporaryDir>
+#include <QTimer>
+#include <QToolButton>
+#include <functional>
 #include <QFile>
 #include <QTextStream>
 #include <QTableView>
@@ -10,6 +19,7 @@
 #include <QTextBrowser>
 
 #include "ui/mainwindow.h"
+#include "ui/transaction_preview_dialog.h"
 #include "core/printf_parser.h"
 
 using namespace OctoCRUX;
@@ -44,10 +54,28 @@ private slots:
     void testSearchBoxFiltering();
     void testPortSelectionUpdatesDetailTabs();
     void testLiveExecutionStreaming();
+    void testPreviewDescribe();
+    void testUpgradeWithNothingToDoStartsNoProcess();
+    void testUpgradePreviewGatesExecution();
+    void testInstallPreviewRejectStartsNoProcess();
+    void testSyncConfirmRejectStartsNoProcess();
     void testCloseRefusedDuringOperation();
 
 private:
     QString readFile(const QString &filePath);
+
+    // Fake prt-get/ports placed first in PATH: every process start appends its
+    // argv to the probe log, so "no process started" means "probe log absent".
+    bool installFakeTools();
+    void removeFakeTools();
+    QStringList probeLines() const;
+    QToolButton* toolButton(const QString &text) const;
+    // Runs fn on the next modal widget (dialog or message box) once it is shown.
+    void onNextModal(const std::function<void(QWidget *)> &fn);
+
+    std::unique_ptr<QTemporaryDir> m_fakeBin;
+    QByteArray m_savedPath;
+    QString m_probeLog;
 
     QString m_sourceDir;
     std::shared_ptr<MockCommandRunner> m_mockRunner;
@@ -232,6 +260,265 @@ void TestMainWindow::testCloseRefusedDuringOperation() {
     emit m_adapter->operationFinished(1, OperationErrorKind::GeneralError, QStringLiteral("test-close done"));
     QVERIFY(m_window->close());
     QVERIFY(!m_window->isVisible());
+}
+
+bool TestMainWindow::installFakeTools() {
+    m_savedPath = qgetenv("PATH");
+    m_fakeBin = std::make_unique<QTemporaryDir>();
+    if (!m_fakeBin->isValid()) {
+        return false;
+    }
+    const QString script = m_sourceDir + QStringLiteral("/tests/scripts/fake_slow_prtget.sh");
+    for (const QString &name : {QStringLiteral("prt-get"), QStringLiteral("ports")}) {
+        if (!QFile::link(script, m_fakeBin->filePath(name))) {
+            return false;
+        }
+    }
+    m_probeLog = m_fakeBin->filePath(QStringLiteral("probe.log"));
+    qputenv("PATH", m_fakeBin->path().toLocal8Bit() + ':' + m_savedPath);
+    qputenv("OCTOCRUX_PROBE_LOG", m_probeLog.toLocal8Bit());
+    qputenv("FAKE_PRTGET_DURATION", "0");
+    m_adapter->setPrivilegeHelperType(PrivilegeHelperType::None);
+
+    // Safety guard: never click a mutating button unless the fakes win the lookup.
+    return QStandardPaths::findExecutable(QStringLiteral("prt-get")) == m_fakeBin->filePath(QStringLiteral("prt-get"))
+        && QStandardPaths::findExecutable(QStringLiteral("ports")) == m_fakeBin->filePath(QStringLiteral("ports"));
+}
+
+void TestMainWindow::removeFakeTools() {
+    if (!m_fakeBin) {
+        return;
+    }
+    qputenv("PATH", m_savedPath);
+    qunsetenv("OCTOCRUX_PROBE_LOG");
+    qunsetenv("FAKE_PRTGET_DURATION");
+    m_fakeBin.reset();
+}
+
+QStringList TestMainWindow::probeLines() const {
+    QFile f(m_probeLog);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return {};
+    }
+    return QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+}
+
+QToolButton* TestMainWindow::toolButton(const QString &text) const {
+    for (QToolButton *b : m_window->findChildren<QToolButton*>()) {
+        if (b->text() == text) {
+            return b;
+        }
+    }
+    return nullptr;
+}
+
+void TestMainWindow::onNextModal(const std::function<void(QWidget *)> &fn) {
+    auto *timer = new QTimer(this);
+    auto deadline = std::make_shared<int>(500); // 500 x 10 ms
+    connect(timer, &QTimer::timeout, this, [timer, fn, deadline]() {
+        QWidget *modal = QApplication::activeModalWidget();
+        if (modal && modal->isVisible()) {
+            timer->stop();
+            timer->deleteLater();
+            fn(modal);
+        } else if (--(*deadline) <= 0) {
+            timer->stop();
+            timer->deleteLater();
+        }
+    });
+    timer->start(10);
+}
+
+void TestMainWindow::testPreviewDescribe() {
+    TransactionPlan plan;
+    TransactionStep up;
+    up.action = TransactionAction::Upgrade;
+    up.portName = QStringLiteral("elfutils");
+    TransactionStep in;
+    in.action = TransactionAction::Install;
+    in.portName = QStringLiteral("a2ps");
+    in.hasPostInstall = true;
+    plan.steps = {up, in};
+    plan.lockedSkipped = {QStringLiteral("llvm")};
+    plan.workMountInfo.mountPoint = QStringLiteral("/usr/ports/work");
+    plan.workMountInfo.isTmpfs = true;
+    plan.workMountInfo.availableBytes = 10ull * 1024 * 1024 * 1024;
+    plan.workMountInfo.totalBytes = 10ull * 1024 * 1024 * 1024;
+
+    const QList<QStringList> commands = {
+        {QStringLiteral("qt-sudo"), QStringLiteral("-d"), QStringLiteral("prt-get"), QStringLiteral("update"), QStringLiteral("elfutils")},
+        {QStringLiteral("qt-sudo"), QStringLiteral("-d"), QStringLiteral("prt-get"), QStringLiteral("depinst"), QStringLiteral("a2ps")},
+    };
+    const QString text = TransactionPreviewDialog::describe(plan, commands, PrivilegeHelperType::QtSudo);
+    QVERIFY(text.contains(QStringLiteral("1. qt-sudo -d prt-get update elfutils")));
+    QVERIFY(text.contains(QStringLiteral("2. qt-sudo -d prt-get depinst a2ps")));
+    QVERIFY(text.contains(QStringLiteral("2 elevated invocation(s) through qt-sudo")));
+    QVERIFY(text.contains(QStringLiteral("To install (1):\n  a2ps")));
+    QVERIFY(text.contains(QStringLiteral("To update (1):\n  elfutils")));
+    QVERIFY(text.contains(QStringLiteral("Skipped because locked (1):\n  llvm")));
+    QVERIFY(text.contains(QStringLiteral("a2ps (post-install)")));
+    QVERIFY(text.contains(QStringLiteral("tmpfs (/usr/ports/work): 10.0 GiB free")));
+
+    QCOMPARE(TransactionPreviewDialog::formatCommand({QStringLiteral("su"), QStringLiteral("-c"), QStringLiteral("a b'c")}),
+             QStringLiteral("su -c 'a b'\\''c'"));
+
+    TransactionPreviewDialog dialog(QStringLiteral("t"), plan, commands, PrivilegeHelperType::QtSudo);
+    QVERIFY(dialog.cancelButton()->isDefault());
+    QVERIFY(!dialog.applyButton()->isDefault());
+}
+
+void TestMainWindow::testUpgradeWithNothingToDoStartsNoProcess() {
+    // Real fixture: every outdated port (clang, compiler-rt, lld, llvm) is locked.
+    auto restore = qScopeGuard([this]() { removeFakeTools(); });
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    m_window->setSearchText(QString());
+    m_window->tableView()->clearSelection();
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+
+    QString seenName, seenText;
+    onNextModal([&](QWidget *w) {
+        seenName = w->objectName();
+        if (auto *box = qobject_cast<QMessageBox*>(w)) {
+            seenText = box->text();
+            box->accept();
+        } else if (auto *dlg = qobject_cast<QDialog*>(w)) {
+            dlg->reject();
+        }
+    });
+    QToolButton *upgrade = toolButton(QStringLiteral("Upgrade"));
+    QVERIFY(upgrade && upgrade->isEnabled());
+    upgrade->click();
+
+    QCOMPARE(seenName, QStringLiteral("nothingToDoMessage"));
+    for (const QString &p : {QStringLiteral("llvm"), QStringLiteral("clang"), QStringLiteral("lld"), QStringLiteral("compiler-rt")}) {
+        QVERIFY2(seenText.contains(p), qPrintable(seenText));
+    }
+    QTest::qWait(200);
+    QVERIFY(probeLines().isEmpty());
+    QCOMPARE(spyFinished.count(), 0);
+}
+
+void TestMainWindow::testUpgradePreviewGatesExecution() {
+    // Same real fixture, with gtk3 (installed, unlocked) marked outdated in memory
+    // (column %i: yes -> diff) so that Upgrade has something to run. Only that one
+    // field differs from the capture. (Locks also come from the fixture's
+    // prt-get.locker, so unlocking llvm via %l alone would not work.)
+    const QString printfPath = m_sourceDir + QStringLiteral("/tests/fixtures/crux3.8/cmd/printf-production-11token.out");
+    const QString original = readFile(printfPath);
+    QStringList lines = original.split(QLatin1Char('\n'));
+    bool changed = false;
+    for (QString &line : lines) {
+        QStringList f = line.split(QLatin1Char('\t'));
+        if (f.size() == 11 && f.at(0) == QLatin1String("gtk3") && f.at(3) == QLatin1String("yes")) {
+            f[3] = QStringLiteral("diff");
+            line = f.join(QLatin1Char('\t'));
+            changed = true;
+        }
+    }
+    QVERIFY(changed);
+    const QStringList printfArgs = {QStringLiteral("printf"), QString::fromLatin1(PrintfParser::PRODUCTION_FORMAT)};
+    m_mockRunner->registerResponse(QStringLiteral("prt-get"), printfArgs, {0, lines.join(QLatin1Char('\n')), QString()});
+    m_adapter->invalidateCache();
+    m_window->refreshCatalog();
+    auto restore = qScopeGuard([&]() {
+        removeFakeTools();
+        m_mockRunner->registerResponse(QStringLiteral("prt-get"), printfArgs, {0, original, QString()});
+        m_adapter->invalidateCache();
+        m_window->refreshCatalog();
+    });
+
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    m_window->setSearchText(QString());
+    m_window->tableView()->clearSelection();
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+    QToolButton *upgrade = toolButton(QStringLiteral("Upgrade"));
+    QVERIFY(upgrade && upgrade->isEnabled());
+
+    // 1. Reject: the preview is shown and no process starts.
+    QString summary;
+    onNextModal([&](QWidget *w) {
+        if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(w)) {
+            summary = dlg->summaryText();
+            dlg->reject();
+        } else if (auto *d = qobject_cast<QDialog*>(w)) {
+            d->reject();
+        }
+    });
+    upgrade->click();
+    QVERIFY2(summary.contains(QStringLiteral("1. prt-get update gtk3")), qPrintable(summary));
+    QVERIFY(summary.contains(QStringLiteral("Skipped because locked (4)")));
+    QTest::qWait(200);
+    QVERIFY(probeLines().isEmpty());
+    QCOMPARE(spyFinished.count(), 0);
+
+    // 2. Apply: exactly the previewed command runs, once.
+    onNextModal([&](QWidget *w) {
+        if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(w)) {
+            dlg->applyButton()->click();
+        } else if (auto *d = qobject_cast<QDialog*>(w)) {
+            d->reject();
+        }
+    });
+    upgrade->click();
+    QVERIFY(spyFinished.wait(5000));
+    QCOMPARE(spyFinished.first().at(0).toInt(), 0);
+    QCOMPARE(probeLines(), QStringList{QStringLiteral("update gtk3")});
+}
+
+void TestMainWindow::testInstallPreviewRejectStartsNoProcess() {
+    auto restore = qScopeGuard([this]() { removeFakeTools(); });
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    m_window->setSearchText(QStringLiteral("a2ps"));
+    QVERIFY(m_window->proxyModel()->rowCount() >= 1);
+    m_window->tableView()->selectRow(0);
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+
+    QString summary;
+    onNextModal([&](QWidget *w) {
+        if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(w)) {
+            summary = dlg->summaryText();
+            dlg->cancelButton()->click();
+        } else if (auto *d = qobject_cast<QDialog*>(w)) {
+            d->reject();
+        }
+    });
+    QToolButton *install = toolButton(QStringLiteral("Install"));
+    QVERIFY(install && install->isEnabled());
+    install->click();
+
+    QVERIFY2(summary.contains(QStringLiteral("prt-get depinst")), qPrintable(summary));
+    QVERIFY(summary.contains(QStringLiteral("a2ps")));
+    QTest::qWait(200);
+    QVERIFY(probeLines().isEmpty());
+    QCOMPARE(spyFinished.count(), 0);
+    m_window->setSearchText(QString());
+}
+
+void TestMainWindow::testSyncConfirmRejectStartsNoProcess() {
+    auto restore = qScopeGuard([this]() { removeFakeTools(); });
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+
+    QString seenName, seenText;
+    onNextModal([&](QWidget *w) {
+        seenName = w->objectName();
+        if (auto *box = qobject_cast<QMessageBox*>(w)) {
+            seenText = box->text();
+            QVERIFY(box->defaultButton() == box->button(QMessageBox::Cancel));
+            box->button(QMessageBox::Cancel)->click();
+        } else if (auto *d = qobject_cast<QDialog*>(w)) {
+            d->reject();
+        }
+    });
+    QToolButton *sync = toolButton(QStringLiteral("Sync"));
+    QVERIFY(sync && sync->isEnabled());
+    sync->click();
+
+    QCOMPARE(seenName, QStringLiteral("syncConfirmMessage"));
+    QVERIFY(seenText.contains(QStringLiteral("ports -u")));
+    QTest::qWait(200);
+    QVERIFY(probeLines().isEmpty());
+    QCOMPARE(spyFinished.count(), 0);
 }
 
 QTEST_MAIN(TestMainWindow)

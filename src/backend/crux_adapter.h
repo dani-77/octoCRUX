@@ -66,6 +66,8 @@ public:
     PrivilegeHelperType privilegeHelperType() const override;
 
     // --- Mutations & Execution ---
+    QList<QStringList> transactionCommands(const TransactionPlan &plan) const override;
+    QStringList syncPortsCommand() const override;
     bool executeTransaction(const TransactionPlan &plan) override;
     bool syncPortsTree() override;
     bool lockPort(const QString &portName) override;
@@ -80,6 +82,10 @@ private:
         int currentStep = 1;
         int totalSteps = 1;
     };
+
+    // Single source of truth for how a plan becomes prt-get invocations; used by
+    // both transactionCommands() (preview) and executeTransaction() (execution).
+    QList<BatchedOperation> buildBatchedOperations(const TransactionPlan &plan) const;
 
     QString resolvePath(const QString &absolutePath) const;
     QString readTextFile(const QString &resolvedFilePath) const;

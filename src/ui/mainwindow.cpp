@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "core/build_log_analyzer.h"
+#include "transaction_preview_dialog.h"
 
 #include <QApplication>
 #include <QTableView>
@@ -27,6 +28,7 @@
 #include <QScrollBar>
 #include <QClipboard>
 #include <QCloseEvent>
+#include <QPushButton>
 
 namespace OctoCRUX {
 
@@ -570,6 +572,26 @@ void MainWindow::updateActionButtons() {
 
 void MainWindow::onSyncPortsClicked() {
     if (m_operationInProgress) return;
+
+    // Sync rewrites the ports tree but does not touch installed packages: a simple
+    // confirmation is enough, with Cancel as the default.
+    QMessageBox box(QMessageBox::Question,
+                    QStringLiteral("Synchronize ports tree"),
+                    QStringLiteral("This runs, with elevated privileges:\n\n  %1\n\n"
+                                   "It rewrites the ports tree under /usr/ports. Installed packages "
+                                   "are not changed.")
+                        .arg(TransactionPreviewDialog::formatCommand(m_backend->syncPortsCommand())),
+                    QMessageBox::NoButton, this);
+    box.setObjectName(QStringLiteral("syncConfirmMessage"));
+    QPushButton *syncButton = box.addButton(QStringLiteral("Sync"), QMessageBox::AcceptRole);
+    QPushButton *cancelButton = box.addButton(QMessageBox::Cancel);
+    syncButton->setAutoDefault(false);
+    box.setDefaultButton(cancelButton);
+    box.exec();
+    if (box.clickedButton() != syncButton) {
+        return;
+    }
+
     if (m_outputLogEdit && m_tabWidget) {
         m_tabWidget->setCurrentWidget(m_outputLogEdit);
     }
@@ -584,6 +606,9 @@ void MainWindow::onInstallClicked() {
     TransactionPlan plan = m_planner->planInstall({portOpt->name});
     if (!plan.isValid()) {
         QMessageBox::warning(this, QStringLiteral("Installation Error"), plan.errors.join(QLatin1Char('\n')));
+        return;
+    }
+    if (!confirmTransaction(QStringLiteral("Confirm installation of %1").arg(portOpt->name), plan)) {
         return;
     }
 
@@ -604,17 +629,9 @@ void MainWindow::onRemoveClicked() {
         return;
     }
 
-    if (plan.hasCriticalWarnings()) {
-        auto ret = QMessageBox::warning(
-            this,
-            QStringLiteral("Critical System Warning"),
-            plan.criticalWarnings.join(QLatin1Char('\n')) + QStringLiteral("\n\nAre you sure you want to proceed?"),
-            QMessageBox::Yes | QMessageBox::No,
-            QMessageBox::No
-        );
-        if (ret != QMessageBox::Yes) {
-            return;
-        }
+    // Critical warnings (e.g. installed dependents) are listed in the preview.
+    if (!confirmTransaction(QStringLiteral("Confirm removal of %1").arg(portOpt->name), plan)) {
+        return;
     }
 
     if (m_outputLogEdit && m_tabWidget) {
@@ -635,6 +652,9 @@ void MainWindow::onUpgradeClicked() {
 
     if (!plan.isValid()) {
         QMessageBox::warning(this, QStringLiteral("Upgrade Error"), plan.errors.join(QLatin1Char('\n')));
+        return;
+    }
+    if (!confirmTransaction(QStringLiteral("Confirm upgrade"), plan)) {
         return;
     }
 
@@ -659,6 +679,24 @@ void MainWindow::onToggleLockClicked() {
 
 void MainWindow::onCancelOperationClicked() {
     m_backend->cancelActiveOperation();
+}
+
+bool MainWindow::confirmTransaction(const QString &title, const TransactionPlan &plan) {
+    const QList<QStringList> commands = m_backend->transactionCommands(plan);
+    if (commands.isEmpty()) {
+        QString text = QStringLiteral("Nothing to execute: the plan contains no actions.");
+        if (!plan.lockedSkipped.isEmpty()) {
+            text += QStringLiteral("\n\nSkipped because locked: %1")
+                        .arg(plan.lockedSkipped.join(QStringLiteral(" ")));
+        }
+        QMessageBox box(QMessageBox::Information, title, text, QMessageBox::Ok, this);
+        box.setObjectName(QStringLiteral("nothingToDoMessage"));
+        box.exec();
+        return false;
+    }
+
+    TransactionPreviewDialog dialog(title, plan, commands, m_backend->privilegeHelperType(), this);
+    return dialog.exec() == QDialog::Accepted;
 }
 
 QMessageBox* MainWindow::closeRefusedMessage() const {

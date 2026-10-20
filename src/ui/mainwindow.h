@@ -99,6 +99,12 @@ private:
     void loadPortDetails(const PortInfo &port);
     void clearPortDetails();
     std::optional<PortInfo> currentSelectedPort() const;
+    /**
+     * Shows the transaction preview and returns true only if the user pressed Apply.
+     * A plan with no commands is reported as "nothing to do" and returns false.
+     * No process is started here.
+     */
+    bool confirmTransaction(const QString &title, const TransactionPlan &plan);
 
     std::shared_ptr<ICruxBackend> m_backend;
     std::unique_ptr<TransactionPlanner> m_planner;

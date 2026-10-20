@@ -437,31 +437,8 @@ PrivilegeHelperType CruxAdapter::privilegeHelperType() const {
 }
 
 // --- Mutations & Execution ---
-bool CruxAdapter::executeTransaction(const TransactionPlan &plan) {
-    m_cancellationRequested = false;
-    m_pendingOperations.clear();
-
-    if (!plan.isValid()) {
-        const QString err = plan.errors.join(QStringLiteral("; "));
-        emit outputReceived(QStringLiteral("[octoCRUX] Error: %1").arg(err), true);
-        const OperationErrorKind kind = plan.hasProtectedPackages()
-            ? OperationErrorKind::ProtectedPackage
-            : OperationErrorKind::GeneralError;
-        emit operationFinished(-1, kind, err);
-        return false;
-    }
-
-    if (plan.steps.isEmpty()) {
-        emit outputReceived(QStringLiteral("[octoCRUX] No executable actions in transaction plan."), false);
-        emit operationFinished(0, OperationErrorKind::None, QStringLiteral("No executable actions in transaction plan"));
-        return true;
-    }
-
-    if (m_processRunner->isRunning()) {
-        emit outputReceived(QStringLiteral("[octoCRUX] Error: Another process is already running"), true);
-        emit operationFinished(-1, OperationErrorKind::GeneralError, QStringLiteral("Process already running"));
-        return false;
-    }
+QList<CruxAdapter::BatchedOperation> CruxAdapter::buildBatchedOperations(const TransactionPlan &plan) const {
+    QList<BatchedOperation> ops;
 
     // Subordinate execution strictly to plan.steps (the sole vetted authority).
     // Partition targets by action, enforcing execution order:
@@ -520,7 +497,7 @@ bool CruxAdapter::executeTransaction(const TransactionPlan &plan) {
         op.program = m_prtGetBin;
         op.arguments = QStringList{QStringLiteral("update")} + upgradeTargets;
         op.description = QStringLiteral("Updating %1").arg(upgradeTargets.join(QStringLiteral(", ")));
-        m_pendingOperations.enqueue(op);
+        ops.append(op);
     }
 
     // 2. Installs second
@@ -529,7 +506,7 @@ bool CruxAdapter::executeTransaction(const TransactionPlan &plan) {
         op.program = m_prtGetBin;
         op.arguments = QStringList{QStringLiteral("depinst")} + installTargets;
         op.description = QStringLiteral("Installing %1").arg(installTargets.join(QStringLiteral(", ")));
-        m_pendingOperations.enqueue(op);
+        ops.append(op);
     }
 
     // 3. Reinstalls
@@ -538,7 +515,7 @@ bool CruxAdapter::executeTransaction(const TransactionPlan &plan) {
         op.program = m_prtGetBin;
         op.arguments = QStringList{QStringLiteral("update"), QStringLiteral("-fr")} + reinstallTargets;
         op.description = QStringLiteral("Reinstalling %1").arg(reinstallTargets.join(QStringLiteral(", ")));
-        m_pendingOperations.enqueue(op);
+        ops.append(op);
     }
 
     // 4. Removals
@@ -547,7 +524,7 @@ bool CruxAdapter::executeTransaction(const TransactionPlan &plan) {
         op.program = m_prtGetBin;
         op.arguments = QStringList{QStringLiteral("remove")} + removeTargets;
         op.description = QStringLiteral("Removing %1").arg(removeTargets.join(QStringLiteral(", ")));
-        m_pendingOperations.enqueue(op);
+        ops.append(op);
     }
 
     // 5. Locks
@@ -556,7 +533,7 @@ bool CruxAdapter::executeTransaction(const TransactionPlan &plan) {
         op.program = m_prtGetBin;
         op.arguments = QStringList{QStringLiteral("lock")} + lockTargets;
         op.description = QStringLiteral("Locking %1").arg(lockTargets.join(QStringLiteral(", ")));
-        m_pendingOperations.enqueue(op);
+        ops.append(op);
     }
 
     // 6. Unlocks
@@ -565,6 +542,58 @@ bool CruxAdapter::executeTransaction(const TransactionPlan &plan) {
         op.program = m_prtGetBin;
         op.arguments = QStringList{QStringLiteral("unlock")} + unlockTargets;
         op.description = QStringLiteral("Unlocking %1").arg(unlockTargets.join(QStringLiteral(", ")));
+        ops.append(op);
+    }
+
+    for (int i = 0; i < ops.size(); ++i) {
+        ops[i].currentStep = i + 1;
+        ops[i].totalSteps = ops.size();
+    }
+    return ops;
+}
+
+QList<QStringList> CruxAdapter::transactionCommands(const TransactionPlan &plan) const {
+    QList<QStringList> commands;
+    if (!plan.isValid()) {
+        return commands;
+    }
+    for (const BatchedOperation &op : buildBatchedOperations(plan)) {
+        commands.append(m_privilegeHelper.wrap(op.program, op.arguments));
+    }
+    return commands;
+}
+
+QStringList CruxAdapter::syncPortsCommand() const {
+    return m_privilegeHelper.wrap(m_portsBin, {QStringLiteral("-u")});
+}
+
+bool CruxAdapter::executeTransaction(const TransactionPlan &plan) {
+    m_cancellationRequested = false;
+    m_pendingOperations.clear();
+
+    if (!plan.isValid()) {
+        const QString err = plan.errors.join(QStringLiteral("; "));
+        emit outputReceived(QStringLiteral("[octoCRUX] Error: %1").arg(err), true);
+        const OperationErrorKind kind = plan.hasProtectedPackages()
+            ? OperationErrorKind::ProtectedPackage
+            : OperationErrorKind::GeneralError;
+        emit operationFinished(-1, kind, err);
+        return false;
+    }
+
+    if (plan.steps.isEmpty()) {
+        emit outputReceived(QStringLiteral("[octoCRUX] No executable actions in transaction plan."), false);
+        emit operationFinished(0, OperationErrorKind::None, QStringLiteral("No executable actions in transaction plan"));
+        return true;
+    }
+
+    if (m_processRunner->isRunning()) {
+        emit outputReceived(QStringLiteral("[octoCRUX] Error: Another process is already running"), true);
+        emit operationFinished(-1, OperationErrorKind::GeneralError, QStringLiteral("Process already running"));
+        return false;
+    }
+
+    for (const BatchedOperation &op : buildBatchedOperations(plan)) {
         m_pendingOperations.enqueue(op);
     }
 
@@ -572,12 +601,6 @@ bool CruxAdapter::executeTransaction(const TransactionPlan &plan) {
         emit outputReceived(QStringLiteral("[octoCRUX] No executable actions in transaction plan."), false);
         emit operationFinished(0, OperationErrorKind::None, QStringLiteral("No operations in transaction plan"));
         return true;
-    }
-
-    const int totalOps = m_pendingOperations.size();
-    for (int i = 0; i < totalOps; ++i) {
-        m_pendingOperations[i].currentStep = i + 1;
-        m_pendingOperations[i].totalSteps = totalOps;
     }
 
     startNextBatchedOperation();
@@ -633,7 +656,7 @@ bool CruxAdapter::syncPortsTree() {
     emit progressChanged(1, 1, description);
     emit outputReceived(QStringLiteral("[octoCRUX] %1").arg(description), false);
 
-    const QStringList wrappedCmd = m_privilegeHelper.wrap(m_portsBin, {QStringLiteral("-u")});
+    const QStringList wrappedCmd = syncPortsCommand();
     const bool started = m_processRunner->startProcess(wrappedCmd.first(), wrappedCmd.mid(1));
     if (!started) {
         const QString err = QStringLiteral("Failed to start '%1 -u'").arg(m_portsBin);

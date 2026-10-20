@@ -51,6 +51,7 @@ private slots:
     void testReadPortFile();
     void testPkginfoFilesAndOwner();
     void testExecutionAndMutations();
+    void testTransactionCommandsPreview();
     void testCorePackageDetection();
 
 private:
@@ -370,6 +371,50 @@ void TestCruxAdapter::testCorePackageDetection() {
 
     // Non-existent package
     QVERIFY(!m_adapter->isCorePackage(QStringLiteral("nonexistent_package")));
+}
+
+void TestCruxAdapter::testTransactionCommandsPreview() {
+    auto step = [](TransactionAction a, const QString &name) {
+        TransactionStep s;
+        s.action = a;
+        s.portName = name;
+        return s;
+    };
+    TransactionPlan plan;
+    plan.steps = {
+        step(TransactionAction::Install, QStringLiteral("b")),
+        step(TransactionAction::Remove, QStringLiteral("d")),
+        step(TransactionAction::Upgrade, QStringLiteral("a")),
+        step(TransactionAction::Install, QStringLiteral("c")),
+        step(TransactionAction::Install, QStringLiteral("b")),
+    };
+
+    // Same grouping and order as executeTransaction: update, depinst, ..., remove.
+    m_adapter->setPrtGetBinary(QStringLiteral("prt-get"));
+    m_adapter->setPrivilegeHelperType(PrivilegeHelperType::None);
+    const QList<QStringList> expected = {
+        {QStringLiteral("prt-get"), QStringLiteral("update"), QStringLiteral("a")},
+        {QStringLiteral("prt-get"), QStringLiteral("depinst"), QStringLiteral("b"), QStringLiteral("c")},
+        {QStringLiteral("prt-get"), QStringLiteral("remove"), QStringLiteral("d")},
+    };
+    QCOMPARE(m_adapter->transactionCommands(plan), expected);
+
+    // Wrapped exactly as execution wraps them.
+    m_adapter->setPrivilegeHelperType(PrivilegeHelperType::QtSudo);
+    const QList<QStringList> wrapped = m_adapter->transactionCommands(plan);
+    QCOMPARE(wrapped.size(), 3);
+    for (int i = 0; i < 3; ++i) {
+        QCOMPARE(wrapped.at(i).first(), QStringLiteral("qt-sudo"));
+        QCOMPARE(wrapped.at(i).mid(wrapped.at(i).size() - expected.at(i).size()), expected.at(i));
+    }
+    QCOMPARE(m_adapter->syncPortsCommand().first(), QStringLiteral("qt-sudo"));
+    m_adapter->setPrivilegeHelperType(PrivilegeHelperType::None);
+
+    // Invalid or empty plans produce no commands.
+    TransactionPlan invalid = plan;
+    invalid.errors << QStringLiteral("blocked");
+    QVERIFY(m_adapter->transactionCommands(invalid).isEmpty());
+    QVERIFY(m_adapter->transactionCommands(TransactionPlan()).isEmpty());
 }
 
 QTEST_MAIN(TestCruxAdapter)
