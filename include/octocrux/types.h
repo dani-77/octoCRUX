@@ -129,6 +129,54 @@ enum class TransactionAction {
 };
 
 /**
+ * @brief How pkgmk checks the footprint of a built package.
+ */
+enum class FootprintCheck {
+    Full,       // default: any NEW or MISSING entry fails the build
+    IgnoreNew,  // pkgmk -in: tolerate NEW entries only (prt-get --margs=-in)
+    Ignore      // pkgmk -if: skip the footprint check (prt-get -if)
+};
+
+/**
+ * @brief Per-package, per-run exceptions to pkgmk's build checks.
+ * Chosen by the user for the next run that builds the package; default = all checks on.
+ */
+struct BuildCheckOverrides {
+    FootprintCheck footprint = FootprintCheck::Full;
+    bool ignoreMd5 = false;        // pkgmk -im (prt-get -im)
+    bool ignoreSignature = false;  // pkgmk -is (prt-get -is)
+
+    bool isDefault() const {
+        return footprint == FootprintCheck::Full && !ignoreMd5 && !ignoreSignature;
+    }
+    bool operator==(const BuildCheckOverrides &o) const {
+        return footprint == o.footprint && ignoreMd5 == o.ignoreMd5 && ignoreSignature == o.ignoreSignature;
+    }
+    bool operator!=(const BuildCheckOverrides &o) const { return !(*this == o); }
+
+    /** prt-get options for these exceptions, placed after the command (prt-get(8)). */
+    QStringList prtGetArgs() const {
+        QStringList args;
+        if (footprint == FootprintCheck::Ignore) args << QStringLiteral("-if");
+        if (ignoreMd5) args << QStringLiteral("-im");
+        if (ignoreSignature) args << QStringLiteral("-is");
+        // -in has no prt-get shortcut; --margs passes it to pkgmk.
+        if (footprint == FootprintCheck::IgnoreNew) args << QStringLiteral("--margs=-in");
+        return args;
+    }
+
+    /** Human-readable list, e.g. "ignore new footprint entries (-in), skip md5sum (-im)". */
+    QString describe() const {
+        QStringList parts;
+        if (footprint == FootprintCheck::IgnoreNew) parts << QStringLiteral("ignore new footprint entries (-in)");
+        if (footprint == FootprintCheck::Ignore) parts << QStringLiteral("skip footprint check (-if)");
+        if (ignoreMd5) parts << QStringLiteral("skip md5sum check (-im)");
+        if (ignoreSignature) parts << QStringLiteral("skip signature check (-is)");
+        return parts.join(QStringLiteral(", "));
+    }
+};
+
+/**
  * @brief Discrete step in an executable transaction plan.
  */
 struct TransactionStep {
@@ -141,6 +189,7 @@ struct TransactionStep {
     bool hasPostInstall = false;
     bool isLocked = false;
     QStringList directDependents; // Affected installed packages for removals
+    BuildCheckOverrides overrides; // Build check exceptions for this run (Install/Upgrade/Reinstall)
 };
 
 /**

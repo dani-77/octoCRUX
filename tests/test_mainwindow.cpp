@@ -449,6 +449,22 @@ void TestMainWindow::testPreviewDescribe() {
     TransactionPreviewDialog dialog(QStringLiteral("t"), plan, commands, PrivilegeHelperType::QtSudo);
     QVERIFY(dialog.cancelButton()->isDefault());
     QVERIFY(!dialog.applyButton()->isDefault());
+    QVERIFY(dialog.signatureWarning() == nullptr);
+    QVERIFY(!text.contains(QStringLiteral("Build check exceptions")));
+
+    // Exceptions are listed per package; disabling the signature check adds the red banner.
+    plan.steps[0].overrides.footprint = FootprintCheck::IgnoreNew;
+    plan.steps[1].overrides.ignoreSignature = true;
+    const QString withExceptions = TransactionPreviewDialog::describe(plan, commands, PrivilegeHelperType::QtSudo);
+    QVERIFY2(withExceptions.contains(QStringLiteral("Build check exceptions for this run (2):")), qPrintable(withExceptions));
+    QVERIFY(withExceptions.contains(QStringLiteral("elfutils: ignore new footprint entries (-in)")));
+    QVERIFY(withExceptions.contains(QStringLiteral("a2ps: skip signature check (-is)")));
+    QVERIFY(withExceptions.contains(QStringLiteral("SIGNATURE VERIFICATION DISABLED for a2ps")));
+    TransactionPreviewDialog warned(QStringLiteral("t"), plan, commands, PrivilegeHelperType::QtSudo);
+    QVERIFY(warned.signatureWarning() != nullptr);
+    QVERIFY(warned.signatureWarning()->text().contains(QStringLiteral("a2ps")));
+    QVERIFY(warned.signatureWarning()->styleSheet().contains(QStringLiteral("#c62828")));
+    QVERIFY(warned.cancelButton()->isDefault());
 }
 
 void TestMainWindow::testUpgradeButtonsWhenEveryOutdatedIsLocked() {

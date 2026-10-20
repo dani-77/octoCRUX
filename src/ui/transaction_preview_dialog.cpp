@@ -63,6 +63,20 @@ TransactionPreviewDialog::TransactionPreviewDialog(const QString &title,
 
     auto *layout = new QVBoxLayout(this);
 
+    const QStringList unsigned_ = signatureCheckDisabled(plan);
+    if (!unsigned_.isEmpty()) {
+        m_signatureWarning = new QLabel(
+            QStringLiteral("Signature verification disabled for: %1\n"
+                           "The port files and sources of these packages cannot be authenticated. "
+                           "They will be built and installed as root.")
+                .arg(unsigned_.join(QStringLiteral(", "))), this);
+        m_signatureWarning->setObjectName(QStringLiteral("signatureWarning"));
+        m_signatureWarning->setWordWrap(true);
+        m_signatureWarning->setStyleSheet(QStringLiteral(
+            "background-color: #c62828; color: white; font-weight: bold; padding: 8px; border-radius: 3px;"));
+        layout->addWidget(m_signatureWarning);
+    }
+
     auto *intro = new QLabel(
         QStringLiteral("Review the commands below. Nothing has run yet: the privilege helper is "
                        "only invoked after you press Apply."), this);
@@ -98,6 +112,20 @@ QPushButton* TransactionPreviewDialog::applyButton() const {
 
 QPushButton* TransactionPreviewDialog::cancelButton() const {
     return m_cancelButton;
+}
+
+QLabel* TransactionPreviewDialog::signatureWarning() const {
+    return m_signatureWarning;
+}
+
+QStringList TransactionPreviewDialog::signatureCheckDisabled(const TransactionPlan &plan) {
+    QStringList names;
+    for (const TransactionStep &step : plan.steps) {
+        if (step.overrides.ignoreSignature && !names.contains(step.portName)) {
+            names << step.portName;
+        }
+    }
+    return names;
 }
 
 QString TransactionPreviewDialog::formatCommand(const QStringList &argv) {
@@ -151,7 +179,27 @@ QString TransactionPreviewDialog::describe(const TransactionPlan &plan,
     }
     appendList(out, QStringLiteral("Installed packages indirectly affected by removal"), indirect);
 
+    QStringList exceptions;
+    for (const TransactionStep &step : plan.steps) {
+        if (!step.overrides.isDefault()) {
+            const QString line = QStringLiteral("  %1: %2").arg(step.portName, step.overrides.describe());
+            if (!exceptions.contains(line)) {
+                exceptions << line;
+            }
+        }
+    }
+    if (!exceptions.isEmpty()) {
+        out << QStringLiteral("Build check exceptions for this run (%1):").arg(exceptions.size());
+        out << exceptions;
+        out << QString();
+    }
+
     QStringList warnings = plan.criticalWarnings;
+    const QStringList unsignedPorts = signatureCheckDisabled(plan);
+    if (!unsignedPorts.isEmpty()) {
+        warnings << QStringLiteral("SIGNATURE VERIFICATION DISABLED for %1: the sources cannot be authenticated.")
+                        .arg(unsignedPorts.join(QStringLiteral(", ")));
+    }
     QStringList scripted;
     bool builds = false;
     for (const TransactionStep &step : plan.steps) {

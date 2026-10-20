@@ -52,6 +52,7 @@ private slots:
     void testPkginfoFilesAndOwner();
     void testExecutionAndMutations();
     void testTransactionCommandsPreview();
+    void testBuildCheckOverridesSplitInvocations();
     void testCorePackageDetection();
 
 private:
@@ -415,6 +416,52 @@ void TestCruxAdapter::testTransactionCommandsPreview() {
     invalid.errors << QStringLiteral("blocked");
     QVERIFY(m_adapter->transactionCommands(invalid).isEmpty());
     QVERIFY(m_adapter->transactionCommands(TransactionPlan()).isEmpty());
+}
+
+void TestCruxAdapter::testBuildCheckOverridesSplitInvocations() {
+    auto step = [](TransactionAction a, const QString &name, BuildCheckOverrides o = {}) {
+        TransactionStep s;
+        s.action = a;
+        s.portName = name;
+        s.overrides = o;
+        return s;
+    };
+    BuildCheckOverrides ignoreNew;
+    ignoreNew.footprint = FootprintCheck::IgnoreNew;
+    BuildCheckOverrides skipAll;
+    skipAll.footprint = FootprintCheck::Ignore;
+    skipAll.ignoreMd5 = true;
+    skipAll.ignoreSignature = true;
+
+    // Install steps in quickdep order: a, b (-in), b2 (-in), c, d. Upgrade x with
+    // every check off. Consecutive identical exceptions share one invocation, and
+    // the order is preserved so dependencies still come first.
+    TransactionPlan plan;
+    plan.steps = {
+        step(TransactionAction::Install, QStringLiteral("a")),
+        step(TransactionAction::Install, QStringLiteral("b"), ignoreNew),
+        step(TransactionAction::Install, QStringLiteral("b2"), ignoreNew),
+        step(TransactionAction::Install, QStringLiteral("c")),
+        step(TransactionAction::Install, QStringLiteral("d")),
+        step(TransactionAction::Upgrade, QStringLiteral("x"), skipAll),
+    };
+    m_adapter->setPrtGetBinary(QStringLiteral("prt-get"));
+    m_adapter->setPrivilegeHelperType(PrivilegeHelperType::None);
+    const QList<QStringList> expected = {
+        {QStringLiteral("prt-get"), QStringLiteral("update"), QStringLiteral("-if"), QStringLiteral("-im"),
+         QStringLiteral("-is"), QStringLiteral("x")},
+        {QStringLiteral("prt-get"), QStringLiteral("depinst"), QStringLiteral("a")},
+        {QStringLiteral("prt-get"), QStringLiteral("depinst"), QStringLiteral("--margs=-in"),
+         QStringLiteral("b"), QStringLiteral("b2")},
+        {QStringLiteral("prt-get"), QStringLiteral("depinst"), QStringLiteral("c"), QStringLiteral("d")},
+    };
+    QCOMPARE(m_adapter->transactionCommands(plan), expected);
+
+    // Without exceptions the plan is batched exactly as before.
+    for (TransactionStep &s : plan.steps) {
+        s.overrides = {};
+    }
+    QCOMPARE(m_adapter->transactionCommands(plan).size(), 2);
 }
 
 QTEST_MAIN(TestCruxAdapter)

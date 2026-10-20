@@ -165,9 +165,9 @@ void TestLiveTransactionExecution::testSingleBatchedInvocation() {
     TransactionPlan plan;
     plan.requestedTargets = {QStringLiteral("pkg1"), QStringLiteral("pkg2"), QStringLiteral("pkg3")};
 
-    TransactionStep s1{TransactionAction::Install, QStringLiteral("pkg1"), {}, {}, {}, false, false, false, {}};
-    TransactionStep s2{TransactionAction::Install, QStringLiteral("pkg2"), {}, {}, {}, false, false, false, {}};
-    TransactionStep s3{TransactionAction::Install, QStringLiteral("pkg3"), {}, {}, {}, false, false, false, {}};
+    TransactionStep s1{TransactionAction::Install, QStringLiteral("pkg1"), {}, {}, {}, false, false, false, {}, {}};
+    TransactionStep s2{TransactionAction::Install, QStringLiteral("pkg2"), {}, {}, {}, false, false, false, {}, {}};
+    TransactionStep s3{TransactionAction::Install, QStringLiteral("pkg3"), {}, {}, {}, false, false, false, {}, {}};
     plan.steps = {s1, s2, s3};
 
     QSignalSpy spyFinished(adapter.get(), &ICruxBackend::operationFinished);
@@ -214,10 +214,10 @@ void TestLiveTransactionExecution::testMixedUpgradeAndInstallOrdering() {
     TransactionPlan plan;
     plan.requestedTargets = {QStringLiteral("pkgA"), QStringLiteral("pkgB"), QStringLiteral("pkgC"), QStringLiteral("pkgD")};
 
-    TransactionStep s1{TransactionAction::Install, QStringLiteral("pkgA"), {}, {}, {}, false, false, false, {}};
-    TransactionStep s2{TransactionAction::Upgrade, QStringLiteral("pkgB"), {}, {}, {}, false, false, false, {}};
-    TransactionStep s3{TransactionAction::Install, QStringLiteral("pkgC"), {}, {}, {}, false, false, false, {}};
-    TransactionStep s4{TransactionAction::Upgrade, QStringLiteral("pkgD"), {}, {}, {}, false, false, false, {}};
+    TransactionStep s1{TransactionAction::Install, QStringLiteral("pkgA"), {}, {}, {}, false, false, false, {}, {}};
+    TransactionStep s2{TransactionAction::Upgrade, QStringLiteral("pkgB"), {}, {}, {}, false, false, false, {}, {}};
+    TransactionStep s3{TransactionAction::Install, QStringLiteral("pkgC"), {}, {}, {}, false, false, false, {}, {}};
+    TransactionStep s4{TransactionAction::Upgrade, QStringLiteral("pkgD"), {}, {}, {}, false, false, false, {}, {}};
     plan.steps = {s1, s2, s3, s4};
 
     QSignalSpy spyFinished(adapter.get(), &ICruxBackend::operationFinished);

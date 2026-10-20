@@ -5,6 +5,7 @@
 #include <QList>
 #include <QStringList>
 
+class QLabel;
 class QPlainTextEdit;
 class QPushButton;
 
@@ -39,10 +40,17 @@ public:
                             const QList<QStringList> &commands,
                             PrivilegeHelperType helper);
 
+    /** Build steps whose signature check is disabled for this run (shown in red). */
+    static QStringList signatureCheckDisabled(const TransactionPlan &plan);
+
+    /** The red warning banner, or nullptr when no signature check is disabled. */
+    QLabel* signatureWarning() const;
+
     /** Renders an argument vector for display, single-quoting where a shell would need it. */
     static QString formatCommand(const QStringList &argv);
 
 private:
+    QLabel *m_signatureWarning = nullptr;
     QPlainTextEdit *m_summary = nullptr;
     QPushButton *m_applyButton = nullptr;
     QPushButton *m_cancelButton = nullptr;

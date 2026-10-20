@@ -451,9 +451,23 @@ QList<CruxAdapter::BatchedOperation> CruxAdapter::buildBatchedOperations(const T
     // 5. Lock steps ('prt-get lock <lockTargets>')
     // 6. Unlock steps ('prt-get unlock <unlockTargets>')
 
-    QStringList upgradeTargets;
-    QStringList installTargets;
-    QStringList reinstallTargets;
+    // Build steps keep their order (the planner's quickdep order) and their
+    // per-package build check exceptions.
+    struct BuildTarget {
+        QString name;
+        BuildCheckOverrides overrides;
+    };
+    auto addTarget = [](QList<BuildTarget> &list, const TransactionStep &step) {
+        for (const BuildTarget &t : list) {
+            if (t.name == step.portName) {
+                return;
+            }
+        }
+        list.append({step.portName, step.overrides});
+    };
+    QList<BuildTarget> upgradeTargets;
+    QList<BuildTarget> installTargets;
+    QList<BuildTarget> reinstallTargets;
     QStringList removeTargets;
     QStringList lockTargets;
     QStringList unlockTargets;
@@ -461,19 +475,13 @@ QList<CruxAdapter::BatchedOperation> CruxAdapter::buildBatchedOperations(const T
     for (const auto &step : plan.steps) {
         switch (step.action) {
         case TransactionAction::Upgrade:
-            if (!upgradeTargets.contains(step.portName)) {
-                upgradeTargets.append(step.portName);
-            }
+            addTarget(upgradeTargets, step);
             break;
         case TransactionAction::Install:
-            if (!installTargets.contains(step.portName)) {
-                installTargets.append(step.portName);
-            }
+            addTarget(installTargets, step);
             break;
         case TransactionAction::Reinstall:
-            if (!reinstallTargets.contains(step.portName)) {
-                reinstallTargets.append(step.portName);
-            }
+            addTarget(reinstallTargets, step);
             break;
         case TransactionAction::Remove:
             if (!removeTargets.contains(step.portName)) {
@@ -493,32 +501,36 @@ QList<CruxAdapter::BatchedOperation> CruxAdapter::buildBatchedOperations(const T
         }
     }
 
+    // prt-get applies options to the whole invocation, so a run of consecutive
+    // targets with the same exceptions becomes one invocation. Cutting the ordered
+    // list (instead of moving exceptions to the end) keeps dependencies, which come
+    // first in quickdep order, ahead of the ports that need them.
+    auto appendSegments = [&](const QList<BuildTarget> &targets, const QStringList &command,
+                              const QString &verb) {
+        int i = 0;
+        while (i < targets.size()) {
+            const BuildCheckOverrides overrides = targets.at(i).overrides;
+            QStringList names;
+            while (i < targets.size() && targets.at(i).overrides == overrides) {
+                names << targets.at(i).name;
+                ++i;
+            }
+            BatchedOperation op;
+            op.program = m_prtGetBin;
+            op.arguments = command + overrides.prtGetArgs() + names;
+            op.description = overrides.isDefault()
+                ? QStringLiteral("%1 %2").arg(verb, names.join(QStringLiteral(", ")))
+                : QStringLiteral("%1 %2 (%3)").arg(verb, names.join(QStringLiteral(", ")), overrides.describe());
+            ops.append(op);
+        }
+    };
+
     // 1. Upgrades first
-    if (!upgradeTargets.isEmpty()) {
-        BatchedOperation op;
-        op.program = m_prtGetBin;
-        op.arguments = QStringList{QStringLiteral("update")} + upgradeTargets;
-        op.description = QStringLiteral("Updating %1").arg(upgradeTargets.join(QStringLiteral(", ")));
-        ops.append(op);
-    }
-
+    appendSegments(upgradeTargets, {QStringLiteral("update")}, QStringLiteral("Updating"));
     // 2. Installs second
-    if (!installTargets.isEmpty()) {
-        BatchedOperation op;
-        op.program = m_prtGetBin;
-        op.arguments = QStringList{QStringLiteral("depinst")} + installTargets;
-        op.description = QStringLiteral("Installing %1").arg(installTargets.join(QStringLiteral(", ")));
-        ops.append(op);
-    }
-
+    appendSegments(installTargets, {QStringLiteral("depinst")}, QStringLiteral("Installing"));
     // 3. Reinstalls
-    if (!reinstallTargets.isEmpty()) {
-        BatchedOperation op;
-        op.program = m_prtGetBin;
-        op.arguments = QStringList{QStringLiteral("update"), QStringLiteral("-fr")} + reinstallTargets;
-        op.description = QStringLiteral("Reinstalling %1").arg(reinstallTargets.join(QStringLiteral(", ")));
-        ops.append(op);
-    }
+    appendSegments(reinstallTargets, {QStringLiteral("update"), QStringLiteral("-fr")}, QStringLiteral("Reinstalling"));
 
     // 4. Removals
     if (!removeTargets.isEmpty()) {
