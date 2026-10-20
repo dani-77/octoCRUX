@@ -63,6 +63,7 @@ private slots:
     void testLiveExecutionStreaming();
     void testStatusBarLabelsDoNotOverlap();
     void testRejectedConfigsAlertIsReadable();
+    void testRejectedAlertListsOnlyNewFiles();
     void testCancelledOperationIsNotReportedAsFailure();
     void testTransientOutputReplacesLastLine();
     void testPreviewDescribe();
@@ -391,6 +392,39 @@ void TestMainWindow::testRejectedConfigsAlertIsReadable() {
     QVERIFY(added.contains(QStringLiteral("/var/lib/pkg/rejected/etc/passwd")));
     // File names are shown literally, not interpreted as HTML.
     QVERIFY2(added.contains(QStringLiteral("/var/lib/pkg/rejected/etc/a&b<c>")), qPrintable(added));
+}
+
+void TestMainWindow::testRejectedAlertListsOnlyNewFiles() {
+    QPlainTextEdit *log = m_window->outputLogEdit();
+    const QString r1 = QStringLiteral("/var/lib/pkg/rejected/etc/passwd");
+    const QString r2 = QStringLiteral("/var/lib/pkg/rejected/etc/fstab");
+    const QString r3 = QStringLiteral("/var/lib/pkg/rejected/etc/shadow");
+    auto addedBy = [&](const QStringList &files) {
+        const int before = log->toPlainText().size();
+        emit m_adapter->rejectedConfigsDetected(files);
+        return log->toPlainText().mid(before);
+    };
+
+    addedBy({r1, r2});                       // establishes the pending set
+    // Same files again (the owner saw the same 17 after every operation): one line.
+    QString added = addedBy({r1, r2});
+    QVERIFY2(!added.contains(QStringLiteral("ALERT")), qPrintable(added));
+    QVERIFY(added.contains(QStringLiteral("2 rejected configuration file(s) still pending")));
+    QVERIFY(!added.contains(r1));
+    // One new file: the alert lists only it.
+    added = addedBy({r1, r2, r3});
+    QVERIFY(added.contains(QStringLiteral("[octoCRUX ALERT]")));
+    QVERIFY(added.contains(r3));
+    QVERIFY2(!added.contains(r1) && !added.contains(r2), qPrintable(added));
+    QVERIFY(added.contains(QStringLiteral("(plus 2 already pending)")));
+
+    // An operation that ran and reported nothing: the directory is empty now, so
+    // a later rejection of the same file is new again.
+    emit m_adapter->progressChanged(1, 1, QStringLiteral("Locking criu"));
+    emit m_adapter->operationFinished(0, OperationErrorKind::None, QStringLiteral("ok"));
+    added = addedBy({r1});
+    QVERIFY(added.contains(QStringLiteral("[octoCRUX ALERT]")));
+    QVERIFY(added.contains(r1));
 }
 
 void TestMainWindow::testCancelledOperationIsNotReportedAsFailure() {

@@ -9,6 +9,7 @@
 #include <QItemSelection>
 #include <QPointer>
 #include <QHash>
+#include <QSet>
 #include <memory>
 #include <optional>
 
@@ -194,6 +195,9 @@ private:
     QString m_detailPort;               // port shown in the detail tabs
     QStringList m_overridesInFlight;    // exceptions consumed by the running operation
     int m_runOutputStart = -1;          // Output text offset where the running operation began
+    // /var/lib/pkg/rejected as last reported, so the alert lists only new files.
+    QSet<QString> m_knownRejected;
+    bool m_rejectedReportedThisRun = false;
 };
 
 } // namespace OctoCRUX

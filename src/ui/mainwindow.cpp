@@ -553,9 +553,13 @@ void MainWindow::onBackendTransientOutput(const QString &text) {
 }
 
 void MainWindow::onProgressChanged(int current, int total, const QString &phase) {
-    if (!m_operationInProgress && m_outputLogEdit) {
-        // First progress of an operation: remember where its output starts.
-        m_runOutputStart = m_outputLogEdit->toPlainText().size();
+    if (!m_operationInProgress) {
+        // First progress of an operation: remember where its output starts, and
+        // count only rejected-config reports made during this operation.
+        if (m_outputLogEdit) {
+            m_runOutputStart = m_outputLogEdit->toPlainText().size();
+        }
+        m_rejectedReportedThisRun = false;
     }
     m_operationInProgress = true;
     updateActionButtons();
@@ -571,6 +575,13 @@ void MainWindow::onProgressChanged(int current, int total, const QString &phase)
 }
 
 void MainWindow::onOperationFinished(int exitCode, OperationErrorKind errorKind, const QString &summary) {
+    // The backend checks /var/lib/pkg/rejected after every operation that ran and
+    // reports only when files exist: no report means the directory is now empty
+    // (e.g. after rejmerge), so forget the previous list.
+    if (m_operationInProgress && !m_rejectedReportedThisRun) {
+        m_knownRejected.clear();
+    }
+    m_rejectedReportedThisRun = false;
     m_operationInProgress = false;
     // The exceptions were for this run only: success, failure or cancel, all checks
     // are on again afterwards.
@@ -693,21 +704,45 @@ void MainWindow::offerFootprintRetry(const QStringList &ports) {
 }
 
 void MainWindow::onRejectedConfigsDetected(const QStringList &rejectedFiles) {
+    // The backend reports every pending file after each operation. Show the full
+    // alert only for files that were not pending last time; otherwise one line.
+    m_rejectedReportedThisRun = true;
+    QStringList newFiles;
+    for (const QString &file : rejectedFiles) {
+        if (!m_knownRejected.contains(file)) {
+            newFiles << file;
+        }
+    }
+    m_knownRejected = QSet<QString>(rejectedFiles.cbegin(), rejectedFiles.cend());
+
+    if (newFiles.isEmpty()) {
+        if (m_outputLogEdit) {
+            m_outputLogEdit->appendPlainText(QStringLiteral(
+                "[octoCRUX] %1 rejected configuration file(s) still pending in /var/lib/pkg/rejected "
+                "(unchanged). Review them with rejmerge.").arg(rejectedFiles.size()));
+        }
+        return;
+    }
+
     // Escape each file name, then join with real line breaks: escaping after the
     // join turned the <br/> separators into visible text.
     QStringList escaped;
-    for (const QString &file : rejectedFiles) {
+    for (const QString &file : std::as_const(newFiles)) {
         escaped << file.toHtmlEscaped();
     }
+    const int alreadyPending = rejectedFiles.size() - newFiles.size();
+    const QString tail = alreadyPending > 0
+        ? QStringLiteral("<br/>(plus %1 already pending)").arg(alreadyPending)
+        : QString();
     if (m_outputLogEdit) {
         m_outputLogEdit->appendHtml(QStringLiteral(
             "<br/><span style='color:#ffa726; font-weight:bold;'>"
             "[octoCRUX ALERT] Rejected configuration file(s) found in /var/lib/pkg/rejected:<br/>"
-            "%1</span><br/>"
-        ).arg(escaped.join(QStringLiteral("<br/>"))));
+            "%1%2</span><br/>"
+        ).arg(escaped.join(QStringLiteral("<br/>")), tail));
     }
     statusBar()->showMessage(
-        QStringLiteral("Warning: %1 rejected config(s) found in /var/lib/pkg/rejected!").arg(rejectedFiles.size()),
+        QStringLiteral("Warning: %1 new rejected config(s) in /var/lib/pkg/rejected!").arg(newFiles.size()),
         10000
     );
 }
