@@ -102,7 +102,7 @@
 ---
 
 ### 3.2 Milestone 2: Bare-Metal Diagnostics on CRUX 3.8
-- **Tool Created:** [`crux_diagnostics.sh`](crux_diagnostics.sh) (strictly read-only POSIX diagnostic script).
+- **Tool Created:** [`crux_diagnostics.sh`](tools/crux_diagnostics.sh) (strictly read-only POSIX diagnostic script).
 - **Runs Executed on ThinkPad T480s (CRUX 3.8, Linux 6.12.x, SSD):**
   - **Run 1 (`octocrux-diag-20261019-164451.tar.gz`):** Captured 540 files covering environment, mount points, `prt-get.conf`, `pkgmk.conf`, `pkgadd.conf`, and full `prt-get printf` query output of all 2,307 ports in 69 ms.
   - **Run 2 (`octocrux-diag-20261019-164954.tar.gz`):** Captured targeted dependency trees using `gtk3` as the sample port (`dependent`, `dependent --all`, `quickdep`, `pkginfo -l`).
@@ -470,8 +470,6 @@ octoCRUX/
 ├── ARCHITECTURE.md                                  # Architectural specification & domain model
 ├── BASE_SELECTION.md                                # Analysis & selection of Hybrid Approach B
 ├── CMakeLists.txt                                   # Top-level CMake configuration (C++17, Qt 6 Core & Widgets)
-├── crux_capture_production.sh                       # Provenance-preserving production capture script
-├── crux_diagnostics.sh                              # Read-only POSIX CRUX 3.8 diagnostic script
 ├── NOTES.md                                         # This document (temporal log & handoff)
 ├── "OctoCRUX — Core package protection policy.md"   # Authoritative core protection policy by Daniel Azevedo
 ├── OPEN_QUESTIONS.md                                # Unresolved questions & SCOFS tracking ladder
@@ -520,6 +518,10 @@ octoCRUX/
 │       │   └── cmd/                                 # Real production fixtures with provenance (.cmd, .out, .err, .rc)
 │       └── crux3.8_run2/                            # Run 2 diagnostic captures (gtk3 sample)
 └── tools/
+    ├── crux_capture_execution.sh                    # Read-only capture: pkgmk codes/messages, build logs, prt-get --test
+    ├── crux_capture_production.sh                   # Provenance-preserving production capture script
+    ├── crux_diagnostics.sh                          # Read-only POSIX CRUX 3.8 diagnostic script
+    ├── gen_pkgmk_failure_logs.sh                    # Real pkgmk failure fixtures (unprivileged sandbox runs)
     └── octocrux_live_check.cpp                      # Standalone CLI tool for bare-metal CRUX validation
 ```
 

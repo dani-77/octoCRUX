@@ -3,7 +3,7 @@
 # Purpose: Capture canonical 11-token printf output and pkginfo -o pattern behavior
 #          with full execution provenance (.cmd, .out, .err, .rc, .ms).
 # Read-only: runs only query commands. Refuses to run as root.
-# Usage: sh crux_capture_production.sh
+# Usage: sh tools/crux_capture_production.sh
 # Output: A tarball octocrux-prod-capture-<timestamp>.tar.gz ready to copy to dev machine.
 
 set -eu
