@@ -184,11 +184,15 @@ void CruxProcessRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exi
 
     m_exitCode = exitCode;
 
-    if (m_wasCancelled || exitStatus == QProcess::CrashExit) {
+    if (m_wasCancelled) {
+        // QProcess only defines exitCode() for a normal exit; say how the helper ended.
+        m_errorKind = OperationErrorKind::Cancelled;
+        m_summary = exitStatus == QProcess::NormalExit
+            ? QStringLiteral("Operation was cancelled by user (helper exited with code %1)").arg(exitCode)
+            : QStringLiteral("Operation was cancelled by user (helper terminated by a signal)");
+    } else if (exitStatus == QProcess::CrashExit) {
         m_errorKind = OperationErrorKind::GeneralError;
-        m_summary = m_wasCancelled
-            ? QStringLiteral("Operation was cancelled by user")
-            : QStringLiteral("Process terminated unexpectedly (crashed or killed)");
+        m_summary = QStringLiteral("Process terminated unexpectedly (crashed or killed)");
     } else {
         m_errorKind = BuildLogAnalyzer::classifyLog(m_accumulatedLog, exitCode);
         m_summary = BuildLogAnalyzer::extractSummary(m_accumulatedLog, m_errorKind);

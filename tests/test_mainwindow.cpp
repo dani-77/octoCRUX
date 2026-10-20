@@ -58,6 +58,7 @@ private slots:
     void testLiveExecutionStreaming();
     void testStatusBarLabelsDoNotOverlap();
     void testRejectedConfigsAlertIsReadable();
+    void testCancelledOperationIsNotReportedAsFailure();
     void testPreviewDescribe();
     void testUpgradeWithNothingToDoStartsNoProcess();
     void testUpgradePreviewGatesExecution();
@@ -363,6 +364,18 @@ void TestMainWindow::testRejectedConfigsAlertIsReadable() {
     QVERIFY(added.contains(QStringLiteral("/var/lib/pkg/rejected/etc/passwd")));
     // File names are shown literally, not interpreted as HTML.
     QVERIFY2(added.contains(QStringLiteral("/var/lib/pkg/rejected/etc/a&b<c>")), qPrintable(added));
+}
+
+void TestMainWindow::testCancelledOperationIsNotReportedAsFailure() {
+    QPlainTextEdit *log = m_window->outputLogEdit();
+    const int before = log->toPlainText().size();
+    // As observed on 2026-10-20: qt-sudo ended by SIGTERM after Cancel.
+    emit m_adapter->operationFinished(15, OperationErrorKind::Cancelled,
+        QStringLiteral("Operation was cancelled by user (helper terminated by a signal)"));
+    const QString added = log->toPlainText().mid(before);
+    QVERIFY2(added.contains(QStringLiteral("[octoCRUX] Operation cancelled: Operation was cancelled by user")), qPrintable(added));
+    QVERIFY2(!added.contains(QStringLiteral("failed")), qPrintable(added));
+    QVERIFY(!added.contains(QStringLiteral("General error")));
 }
 
 void TestMainWindow::testPreviewDescribe() {

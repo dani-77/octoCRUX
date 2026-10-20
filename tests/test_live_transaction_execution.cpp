@@ -133,7 +133,7 @@ void TestLiveTransactionExecution::testGracefulCancellation() {
     const OperationErrorKind errorKind = args.at(1).value<OperationErrorKind>();
     const QString summary = args.at(2).toString();
 
-    QCOMPARE(errorKind, OperationErrorKind::GeneralError);
+    QCOMPARE(errorKind, OperationErrorKind::Cancelled);
     QVERIFY(summary.contains(QStringLiteral("cancelled"), Qt::CaseInsensitive));
 
     // Verify the fake process trapped SIGTERM and emitted clean termination log

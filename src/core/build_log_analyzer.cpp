@@ -214,6 +214,7 @@ QString BuildLogAnalyzer::errorKindToString(OperationErrorKind kind) {
     case OperationErrorKind::SignatureError:   return QStringLiteral("Signature verification error");
     case OperationErrorKind::DiskSpaceError:   return QStringLiteral("Out of disk space (ENOSPC)");
     case OperationErrorKind::ProtectedPackage: return QStringLiteral("Core package protection");
+    case OperationErrorKind::Cancelled:        return QStringLiteral("Cancelled by user");
     default:                                   return QStringLiteral("Unknown error");
     }
 }

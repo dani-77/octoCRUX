@@ -58,7 +58,8 @@ enum class OperationErrorKind {
     InstallError = 9,     // pkgadd failed (E_INSTALL, unused by pkgmk: exits 1)
     SignatureError = 10,  // signify signature mismatch or verification failure (E_SIGNATURE)
     DiskSpaceError = 11,  // ENOSPC on work directory mount
-    ProtectedPackage = 12 // Core package removal blocked by protection policy
+    ProtectedPackage = 12, // Core package removal blocked by protection policy
+    Cancelled = 13         // Stopped at the user's request (not a failure of the operation itself)
 };
 
 /**

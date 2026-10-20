@@ -112,7 +112,7 @@ void TestCruxProcessRunner::testCancelOperation() {
     QCOMPARE(spyFinished.count(), 1);
 
     const QList<QVariant> args = spyFinished.takeFirst();
-    QCOMPARE(args.at(1).value<OperationErrorKind>(), OperationErrorKind::GeneralError);
+    QCOMPARE(args.at(1).value<OperationErrorKind>(), OperationErrorKind::Cancelled);
     QVERIFY(args.at(2).toString().contains(QStringLiteral("cancelled"), Qt::CaseInsensitive));
 }
 

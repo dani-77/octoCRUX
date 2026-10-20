@@ -493,10 +493,15 @@ void MainWindow::onOperationFinished(int exitCode, OperationErrorKind errorKind,
     }
 
     if (m_outputLogEdit) {
-        const QString statusMsg = exitCode == 0
-            ? QStringLiteral("\n[octoCRUX] Operation finished successfully: %1\n").arg(summary)
-            : QStringLiteral("\n[octoCRUX] Operation failed (exit code %1, error: %2): %3\n")
+        QString statusMsg;
+        if (errorKind == OperationErrorKind::Cancelled) {
+            statusMsg = QStringLiteral("\n[octoCRUX] Operation cancelled: %1\n").arg(summary);
+        } else if (exitCode == 0) {
+            statusMsg = QStringLiteral("\n[octoCRUX] Operation finished successfully: %1\n").arg(summary);
+        } else {
+            statusMsg = QStringLiteral("\n[octoCRUX] Operation failed (exit code %1, error: %2): %3\n")
                 .arg(exitCode).arg(BuildLogAnalyzer::errorKindToString(errorKind)).arg(summary);
+        }
         m_outputLogEdit->appendPlainText(statusMsg);
     }
 
