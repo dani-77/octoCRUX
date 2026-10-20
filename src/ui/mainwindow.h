@@ -66,6 +66,7 @@ private slots:
 
     // Backend live execution slots
     void onBackendOutputReceived(const QString &text, bool isError);
+    void onBackendTransientOutput(const QString &text);
     void onProgressChanged(int current, int total, const QString &phase);
     void onOperationFinished(int exitCode, OperationErrorKind errorKind, const QString &summary);
     void onRejectedConfigsDetected(const QStringList &rejectedFiles);
@@ -151,6 +152,8 @@ private:
     QLabel *m_backendLabel = nullptr;
 
     bool m_operationInProgress = false;
+    // The last Output line is a '\r' progress line, to be replaced in place.
+    bool m_lastOutputLineTransient = false;
     QPointer<QMessageBox> m_closeRefusedMessage;
 };
 

@@ -20,6 +20,8 @@ CruxAdapter::CruxAdapter(std::shared_ptr<ICommandRunner> runner, QObject *parent
 {
     connect(m_processRunner.get(), &CruxProcessRunner::outputReceived,
             this, &CruxAdapter::outputReceived);
+    connect(m_processRunner.get(), &CruxProcessRunner::transientOutput,
+            this, &CruxAdapter::transientOutputReceived);
     connect(m_processRunner.get(), &CruxProcessRunner::phaseChanged,
             this, [this](const QString &phase) {
                 emit progressChanged(1, 1, phase);

@@ -28,6 +28,7 @@
 #include <QScrollBar>
 #include <QClipboard>
 #include <QCloseEvent>
+#include <QTextCursor>
 #include <QPushButton>
 
 namespace OctoCRUX {
@@ -48,6 +49,8 @@ MainWindow::MainWindow(std::shared_ptr<ICruxBackend> backend, QWidget *parent)
 
     connect(m_backend.get(), &ICruxBackend::outputReceived,
             this, &MainWindow::onBackendOutputReceived);
+    connect(m_backend.get(), &ICruxBackend::transientOutputReceived,
+            this, &MainWindow::onBackendTransientOutput);
     connect(m_backend.get(), &ICruxBackend::progressChanged,
             this, &MainWindow::onProgressChanged);
     connect(m_backend.get(), &ICruxBackend::operationFinished,
@@ -450,9 +453,24 @@ void MainWindow::onPackageSelectionChanged(const QItemSelection &selected, const
     updateActionButtons();
 }
 
+namespace {
+// Replaces the text of the last block of the Output log, keeping the block.
+void replaceLastLine(QPlainTextEdit *edit, const QString &text) {
+    QTextCursor cursor(edit->document());
+    cursor.movePosition(QTextCursor::End);
+    cursor.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    cursor.insertText(text);
+}
+} // namespace
+
 void MainWindow::onBackendOutputReceived(const QString &text, bool isError) {
     if (m_outputLogEdit) {
-        if (isError) {
+        if (m_lastOutputLineTransient) {
+            // The final state of a redrawn line takes the place of its progress updates.
+            replaceLastLine(m_outputLogEdit, text);
+            m_lastOutputLineTransient = false;
+        } else if (isError) {
             m_outputLogEdit->appendHtml(QStringLiteral("<span style='color:#ef5350;'>%1</span>").arg(text.toHtmlEscaped()));
         } else {
             m_outputLogEdit->appendPlainText(text);
@@ -465,6 +483,19 @@ void MainWindow::onBackendOutputReceived(const QString &text, bool isError) {
     } else {
         statusBar()->showMessage(text, 3000);
     }
+}
+
+void MainWindow::onBackendTransientOutput(const QString &text) {
+    if (!m_outputLogEdit) {
+        return;
+    }
+    if (m_lastOutputLineTransient) {
+        replaceLastLine(m_outputLogEdit, text);
+    } else {
+        m_outputLogEdit->appendPlainText(text);
+        m_lastOutputLineTransient = true;
+    }
+    m_outputLogEdit->verticalScrollBar()->setValue(m_outputLogEdit->verticalScrollBar()->maximum());
 }
 
 void MainWindow::onProgressChanged(int current, int total, const QString &phase) {

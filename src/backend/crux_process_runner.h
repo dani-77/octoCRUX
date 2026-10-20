@@ -53,6 +53,12 @@ public:
 
 signals:
     void outputReceived(const QString &line, bool isError);
+    /**
+     * Latest complete state of a terminal line redrawn with '\r' (progress meters).
+     * Not logged: only the final state, when the line ends with '\n', reaches
+     * outputReceived() and capturedLog().
+     */
+    void transientOutput(const QString &text);
     void phaseChanged(const QString &phase);
     void processFinished(int exitCode, OperationErrorKind errorKind, const QString &summary);
     /**

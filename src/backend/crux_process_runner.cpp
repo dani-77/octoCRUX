@@ -5,6 +5,25 @@
 
 namespace OctoCRUX {
 
+namespace {
+
+// What a terminal shows for text redrawn with '\r': the text after the last '\r',
+// or, if nothing follows it, the text between the last two '\r'.
+QString visibleTerminalText(const QString &text) {
+    const int lastCr = text.lastIndexOf(QLatin1Char('\r'));
+    if (lastCr < 0) {
+        return text;
+    }
+    const QString after = text.mid(lastCr + 1);
+    if (!after.isEmpty()) {
+        return after;
+    }
+    const int prevCr = lastCr > 0 ? text.lastIndexOf(QLatin1Char('\r'), lastCr - 1) : -1;
+    return text.mid(prevCr + 1, lastCr - prevCr - 1);
+}
+
+} // namespace
+
 CruxProcessRunner::CruxProcessRunner(QObject *parent)
     : QObject(parent)
 {
@@ -136,7 +155,13 @@ void CruxProcessRunner::processOutputBuffer(QByteArray &buffer, bool isError) {
 
         QString line = QString::fromUtf8(rawLine);
         if (line.endsWith(QLatin1Char('\r'))) {
-            line.chop(1);
+            line.chop(1); // CRLF line ending
+        }
+        // A line redrawn with '\r' (curl progress meter): like a terminal, keep only
+        // what is visible at the end, the text after the last '\r'.
+        const int lastCr = line.lastIndexOf(QLatin1Char('\r'));
+        if (lastCr >= 0) {
+            line = line.mid(lastCr + 1);
         }
 
         m_accumulatedLog.append(line);
@@ -150,6 +175,23 @@ void CruxProcessRunner::processOutputBuffer(QByteArray &buffer, bool isError) {
         }
 
         emit outputReceived(line, isError);
+    }
+
+    // No '\n' yet: report what a terminal would show now. That is the text after the
+    // last '\r' (curl writes "\r<update>"), or, if nothing follows it yet, the text
+    // between the last two '\r' (programs that write "<update>\r"). A chunk split in
+    // the middle of an update can show a truncated state until the next one arrives.
+    // The segment before the last '\r' stays in the buffer: if a '\n' follows
+    // directly, that '\r' was a CRLF ending and the full line is still emitted.
+    const int lastCr = buffer.lastIndexOf('\r');
+    if (lastCr >= 0) {
+        const int prevCr = lastCr > 0 ? buffer.lastIndexOf('\r', lastCr - 1) : -1;
+        const QString state = visibleTerminalText(QString::fromUtf8(buffer.mid(prevCr + 1)));
+        // Drop the redraws already superseded, so the buffer stays bounded.
+        buffer.remove(0, prevCr + 1);
+        if (!state.isEmpty()) {
+            emit transientOutput(state);
+        }
     }
 }
 
@@ -169,14 +211,15 @@ void CruxProcessRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exi
     m_cancelWatchdog.stop();
 
     // Flush any remaining buffers
+    // (e.g. a progress meter cut off by Cancel: keep only its visible state)
     if (!m_stdoutBuffer.isEmpty()) {
-        const QString line = QString::fromUtf8(m_stdoutBuffer);
+        const QString line = visibleTerminalText(QString::fromUtf8(m_stdoutBuffer));
         m_accumulatedLog.append(line);
         emit outputReceived(line, false);
         m_stdoutBuffer.clear();
     }
     if (!m_stderrBuffer.isEmpty()) {
-        const QString line = QString::fromUtf8(m_stderrBuffer);
+        const QString line = visibleTerminalText(QString::fromUtf8(m_stderrBuffer));
         m_accumulatedLog.append(line);
         emit outputReceived(line, true);
         m_stderrBuffer.clear();

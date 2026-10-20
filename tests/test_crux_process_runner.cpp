@@ -16,6 +16,7 @@ private slots:
     void testCancelOperation();
     void testInteractivePromptGetsEof();
     void testCancelStalledWarnsWithoutKill();
+    void testCarriageReturnProgressIsTransient();
 };
 
 void TestCruxProcessRunner::testSuccessfulExecution() {
@@ -175,6 +176,48 @@ void TestCruxProcessRunner::testCancelStalledWarnsWithoutKill() {
     QVERIFY(spyFinished.first().at(2).toString().contains(QStringLiteral("cancelled"), Qt::CaseInsensitive));
     QVERIFY(sawLine(QStringLiteral("fake helper: second SIGTERM, exiting")));
     QCOMPARE(spyStalled.count(), 1);
+}
+
+void TestCruxProcessRunner::testCarriageReturnProgressIsTransient() {
+    // curl's progress meter (seen in the 2026-10-20 linux-firmware log) redraws one
+    // terminal line with '\r'. Both '\r'-before and '\r'-after styles are covered,
+    // plus CRLF line endings, which must not be treated as progress.
+    CruxProcessRunner runner;
+    QSignalSpy spyFinished(&runner, &CruxProcessRunner::processFinished);
+    QSignalSpy spyOutput(&runner, &CruxProcessRunner::outputReceived);
+    QSignalSpy spyTransient(&runner, &CruxProcessRunner::transientOutput);
+
+    const QString script = QStringLiteral(
+        "printf 'p1\\r'; sleep 0.3; printf 'p2\\r'; sleep 0.3; printf 'done\\n'\n"
+        "printf '\\r q1'; sleep 0.3; printf '\\r q2'; sleep 0.3; printf '\\r q3\\n'\n"
+        "printf 'crlf\\r\\n'\n");
+    QVERIFY(runner.startProcess(QStringLiteral("sh"), {QStringLiteral("-c"), script}));
+    QVERIFY(spyFinished.wait(5000));
+
+    QStringList lines;
+    for (const auto &args : spyOutput) lines << args.at(0).toString();
+    QCOMPARE(lines, (QStringList{QStringLiteral("done"), QStringLiteral(" q3"), QStringLiteral("crlf")}));
+    QCOMPARE(runner.capturedLog(), QStringLiteral("done\n q3\ncrlf\n"));
+
+    QStringList transient;
+    for (const auto &args : spyTransient) transient << args.at(0).toString();
+    QVERIFY2(transient.contains(QStringLiteral("p1")) && transient.contains(QStringLiteral("p2")),
+             qPrintable(transient.join(QLatin1Char('|'))));
+    QVERIFY2(transient.contains(QStringLiteral(" q1")) && transient.contains(QStringLiteral(" q2")),
+             qPrintable(transient.join(QLatin1Char('|'))));
+    QVERIFY(!transient.contains(QStringLiteral("crlf")));
+
+    // Output cut off in the middle of a redraw (as when Cancel stops curl): the
+    // flushed remainder is its visible state, without '\r' or superseded updates.
+    CruxProcessRunner cut;
+    QSignalSpy spyCutFinished(&cut, &CruxProcessRunner::processFinished);
+    QSignalSpy spyCutOutput(&cut, &CruxProcessRunner::outputReceived);
+    QVERIFY(cut.startProcess(QStringLiteral("sh"), {QStringLiteral("-c"),
+        QStringLiteral("printf '\\r 26 548.0M'; sleep 0.3; printf '\\r 27 548.0M'")}));
+    QVERIFY(spyCutFinished.wait(5000));
+    QVERIFY(!spyCutOutput.isEmpty());
+    QCOMPARE(spyCutOutput.last().at(0).toString(), QStringLiteral(" 27 548.0M"));
+    QVERIFY(!cut.capturedLog().contains(QLatin1Char('\r')));
 }
 
 QTEST_MAIN(TestCruxProcessRunner)

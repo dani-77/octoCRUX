@@ -61,6 +61,8 @@ public:
 
 signals:
     void outputReceived(const QString &text, bool isError);
+    /** The current state of a line being redrawn with '\r' (e.g. a download progress meter). */
+    void transientOutputReceived(const QString &text);
     void progressChanged(int current, int total, const QString &phase);
     void operationFinished(int exitCode, OperationErrorKind errorKind, const QString &summary);
     void rejectedConfigsDetected(const QStringList &rejectedFiles);

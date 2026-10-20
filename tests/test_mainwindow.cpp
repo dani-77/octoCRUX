@@ -5,6 +5,7 @@
 #include <QScopeGuard>
 #include <QSignalSpy>
 #include <QStatusBar>
+#include <QTextBlock>
 #include <QLabel>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -59,6 +60,7 @@ private slots:
     void testStatusBarLabelsDoNotOverlap();
     void testRejectedConfigsAlertIsReadable();
     void testCancelledOperationIsNotReportedAsFailure();
+    void testTransientOutputReplacesLastLine();
     void testPreviewDescribe();
     void testUpgradeWithNothingToDoStartsNoProcess();
     void testUpgradePreviewGatesExecution();
@@ -376,6 +378,24 @@ void TestMainWindow::testCancelledOperationIsNotReportedAsFailure() {
     QVERIFY2(added.contains(QStringLiteral("[octoCRUX] Operation cancelled: Operation was cancelled by user")), qPrintable(added));
     QVERIFY2(!added.contains(QStringLiteral("failed")), qPrintable(added));
     QVERIFY(!added.contains(QStringLiteral("General error")));
+}
+
+void TestMainWindow::testTransientOutputReplacesLastLine() {
+    QPlainTextEdit *log = m_window->outputLogEdit();
+    emit m_adapter->outputReceived(QStringLiteral("=======> Downloading 'x'."), false);
+    const int blocks = log->blockCount();
+    emit m_adapter->transientOutputReceived(QStringLiteral(" 10 548.0M"));
+    emit m_adapter->transientOutputReceived(QStringLiteral(" 20 548.0M"));
+    QCOMPARE(log->blockCount(), blocks + 1);
+    QCOMPARE(log->document()->lastBlock().text(), QStringLiteral(" 20 548.0M"));
+    // The completed line replaces the progress line in place.
+    emit m_adapter->outputReceived(QStringLiteral("100 548.0M"), true);
+    QCOMPARE(log->blockCount(), blocks + 1);
+    QCOMPARE(log->document()->lastBlock().text(), QStringLiteral("100 548.0M"));
+    // The next line is appended normally.
+    emit m_adapter->outputReceived(QStringLiteral("next"), false);
+    QCOMPARE(log->blockCount(), blocks + 2);
+    QVERIFY(!log->toPlainText().contains(QStringLiteral(" 10 548.0M")));
 }
 
 void TestMainWindow::testPreviewDescribe() {
