@@ -203,7 +203,7 @@ signals:
 
 ### 5.2 Privilege Escalation Flow
 ```
-[User clicks Install / Upgrade / Remove]
+[User clicks Install / Upgrade / Upgrade All / Remove]
         |
         v
 [TransactionPlanner builds the plan]  (no process)
@@ -227,14 +227,15 @@ signals:
 ```
 
 #### 5.2.1 Transaction Preview (before any elevation)
-- **Install, Upgrade, Remove** always open `TransactionPreviewDialog` before anything runs. It shows:
+- **Upgrade** acts only on the selected package and is enabled only when it is outdated and unlocked. **Upgrade All** is the system-wide upgrade, enabled whenever at least one package is outdated and unlocked, whatever is selected (`MainWindow::hasUpgradablePackages`). Button state is re-evaluated after every catalog reload, because reloading the model clears the selection without emitting `selectionChanged`.
+- **Install, Upgrade, Upgrade All, Remove** always open `TransactionPreviewDialog` before anything runs. It shows:
   - the exact command lines in execution order, from `ICruxBackend::transactionCommands(plan)`. `CruxAdapter` builds them with the same function `executeTransaction()` uses (`buildBatchedOperations`), already wrapped by the privilege helper, so the preview cannot drift from what runs;
   - the number of elevated invocations. Whether each one asks for authentication is not verified, so the dialog says "may ask";
   - the ports to install, update, reinstall and remove, and the ports skipped because they are locked;
   - for removals, the installed dependents affected, both direct and the recursive cascade;
   - warnings: the plan's critical warnings, ports with `pre-install`/`post-install` scripts (`%E`/`%O`), and the work directory mount (tmpfs or not) with its free space, for operations that build.
   Cancel is the default button.
-- A plan with no commands (e.g. Upgrade when every outdated port is locked) shows "Nothing to execute" with the locked ports, and starts nothing.
+- A plan with no commands shows "Nothing to execute" with the locked ports, and starts nothing. (Upgrade and Upgrade All are already disabled when every outdated port is locked.)
 - Core packages never reach the dialog: the plan is invalid, and the existing error box reports it.
 - **Sync** (`ports -u`) uses a simple confirmation that shows the command; Cancel is the default. It rewrites the ports tree, not installed packages.
 - **Lock/Unlock** run without confirmation (reversible with one click).

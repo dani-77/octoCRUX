@@ -178,9 +178,15 @@ void MainWindow::setupToolbar() {
 
     m_btnUpgrade = new QToolButton(toolbar);
     m_btnUpgrade->setText(QStringLiteral("Upgrade"));
-    m_btnUpgrade->setToolTip(QStringLiteral("Upgrade outdated packages"));
+    m_btnUpgrade->setToolTip(QStringLiteral("Upgrade the selected package (outdated and unlocked)"));
     toolbar->addWidget(m_btnUpgrade);
     connect(m_btnUpgrade, &QToolButton::clicked, this, &MainWindow::onUpgradeClicked);
+
+    m_btnUpgradeAll = new QToolButton(toolbar);
+    m_btnUpgradeAll->setText(QStringLiteral("Upgrade All"));
+    m_btnUpgradeAll->setToolTip(QStringLiteral("Upgrade every outdated, unlocked package (locked ones are skipped)"));
+    toolbar->addWidget(m_btnUpgradeAll);
+    connect(m_btnUpgradeAll, &QToolButton::clicked, this, &MainWindow::onUpgradeAllClicked);
 
     m_btnLock = new QToolButton(toolbar);
     m_btnLock->setText(QStringLiteral("Lock"));
@@ -382,6 +388,9 @@ void MainWindow::refreshCatalog() {
     populateCollections();
     updateStatusBar();
     clearPortDetails();
+    // Reloading the model clears the selection without emitting selectionChanged,
+    // so the buttons must be re-evaluated here or they keep the old port's state.
+    updateActionButtons();
     QApplication::restoreOverrideCursor();
 }
 
@@ -580,11 +589,15 @@ void MainWindow::updateActionButtons() {
         m_btnInstall->setEnabled(false);
         m_btnRemove->setEnabled(false);
         m_btnUpgrade->setEnabled(false);
+        m_btnUpgradeAll->setEnabled(false);
         m_btnLock->setEnabled(false);
         m_btnRefresh->setEnabled(false);
         m_btnCancel->setEnabled(true);
         return;
     }
+
+    // Independent of the selection: the system-wide upgrade.
+    m_btnUpgradeAll->setEnabled(hasUpgradablePackages());
 
     m_btnCancel->setEnabled(false);
     m_btnSync->setEnabled(true);
@@ -602,14 +615,15 @@ void MainWindow::updateActionButtons() {
         } else {
             m_btnRemove->setToolTip(QStringLiteral("Remove selected package"));
         }
-        m_btnUpgrade->setEnabled(port.installStatus == InstallStatus::Outdated);
+        m_btnUpgrade->setEnabled(port.installStatus == InstallStatus::Outdated
+                                 && port.lockStatus == LockStatus::Unlocked);
         m_btnLock->setEnabled(true);
         m_btnLock->setText(port.lockStatus == LockStatus::Locked ? QStringLiteral("Unlock") : QStringLiteral("Lock"));
     } else {
         m_btnInstall->setEnabled(false);
         m_btnRemove->setEnabled(false);
         m_btnRemove->setToolTip(QStringLiteral("Remove selected package"));
-        m_btnUpgrade->setEnabled(true);
+        m_btnUpgrade->setEnabled(false);
         m_btnLock->setEnabled(false);
         m_btnLock->setText(QStringLiteral("Lock"));
     }
@@ -687,19 +701,16 @@ void MainWindow::onRemoveClicked() {
 
 void MainWindow::onUpgradeClicked() {
     if (m_operationInProgress) return;
+    // Selected package only. The system-wide upgrade is onUpgradeAllClicked().
     auto portOpt = currentSelectedPort();
-    TransactionPlan plan;
-    if (portOpt.has_value() && portOpt->installStatus == InstallStatus::Outdated) {
-        plan = m_planner->planUpgrade({portOpt->name});
-    } else {
-        plan = m_planner->planUpgrade();
-    }
+    if (!portOpt.has_value() || portOpt->installStatus != InstallStatus::Outdated) return;
+    const TransactionPlan plan = m_planner->planUpgrade({portOpt->name});
 
     if (!plan.isValid()) {
         QMessageBox::warning(this, QStringLiteral("Upgrade Error"), plan.errors.join(QLatin1Char('\n')));
         return;
     }
-    if (!confirmTransaction(QStringLiteral("Confirm upgrade"), plan)) {
+    if (!confirmTransaction(QStringLiteral("Confirm upgrade of %1").arg(portOpt->name), plan)) {
         return;
     }
 
@@ -707,6 +718,32 @@ void MainWindow::onUpgradeClicked() {
         m_tabWidget->setCurrentWidget(m_outputLogEdit);
     }
     m_backend->executeTransaction(plan);
+}
+
+void MainWindow::onUpgradeAllClicked() {
+    if (m_operationInProgress) return;
+    const TransactionPlan plan = m_planner->planUpgrade();
+    if (!plan.isValid()) {
+        QMessageBox::warning(this, QStringLiteral("Upgrade Error"), plan.errors.join(QLatin1Char('\n')));
+        return;
+    }
+    if (!confirmTransaction(QStringLiteral("Confirm upgrade of all outdated packages"), plan)) {
+        return;
+    }
+
+    if (m_outputLogEdit && m_tabWidget) {
+        m_tabWidget->setCurrentWidget(m_outputLogEdit);
+    }
+    m_backend->executeTransaction(plan);
+}
+
+bool MainWindow::hasUpgradablePackages() const {
+    for (const PortInfo &p : m_packageModel->ports()) {
+        if (p.installStatus == InstallStatus::Outdated && p.lockStatus == LockStatus::Unlocked) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void MainWindow::onToggleLockClicked() {
@@ -799,7 +836,8 @@ void MainWindow::onCustomContextMenuRequested(const QPoint &pos) {
     connect(actRemove, &QAction::triggered, this, &MainWindow::onRemoveClicked);
 
     QAction *actUpgrade = menu.addAction(QStringLiteral("Upgrade '%1'").arg(port.name));
-    actUpgrade->setEnabled(port.installStatus == InstallStatus::Outdated && !m_operationInProgress);
+    actUpgrade->setEnabled(port.installStatus == InstallStatus::Outdated
+                           && port.lockStatus == LockStatus::Unlocked && !m_operationInProgress);
     connect(actUpgrade, &QAction::triggered, this, &MainWindow::onUpgradeClicked);
 
     menu.addSeparator();

@@ -76,6 +76,7 @@ private slots:
     void onInstallClicked();
     void onRemoveClicked();
     void onUpgradeClicked();
+    void onUpgradeAllClicked();
     void onToggleLockClicked();
     void onCancelOperationClicked();
     void onCustomContextMenuRequested(const QPoint &pos);
@@ -106,6 +107,8 @@ private:
      * No process is started here.
      */
     bool confirmTransaction(const QString &title, const TransactionPlan &plan);
+    /** True if at least one package is outdated and unlocked (Upgrade All has work). */
+    bool hasUpgradablePackages() const;
 
     std::shared_ptr<ICruxBackend> m_backend;
     std::unique_ptr<TransactionPlanner> m_planner;
@@ -128,6 +131,7 @@ private:
     QToolButton *m_btnInstall = nullptr;
     QToolButton *m_btnRemove = nullptr;
     QToolButton *m_btnUpgrade = nullptr;
+    QToolButton *m_btnUpgradeAll = nullptr;
     QToolButton *m_btnLock = nullptr;
     QToolButton *m_btnCancel = nullptr;
 

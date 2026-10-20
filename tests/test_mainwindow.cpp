@@ -62,7 +62,8 @@ private slots:
     void testCancelledOperationIsNotReportedAsFailure();
     void testTransientOutputReplacesLastLine();
     void testPreviewDescribe();
-    void testUpgradeWithNothingToDoStartsNoProcess();
+    void testUpgradeButtonsWhenEveryOutdatedIsLocked();
+    void testRefreshDoesNotLeaveStaleButtons();
     void testUpgradePreviewGatesExecution();
     void testInstallPreviewRejectStartsNoProcess();
     void testSyncConfirmRejectStartsNoProcess();
@@ -77,6 +78,8 @@ private:
     void removeFakeTools();
     QStringList probeLines() const;
     QToolButton* toolButton(const QString &text) const;
+    // Searches for name and selects the row whose Name column equals it exactly.
+    bool selectPort(const QString &name);
     // Runs fn on the next modal widget (dialog or message box) once it is shown.
     void onNextModal(const std::function<void(QWidget *)> &fn);
 
@@ -319,6 +322,18 @@ QToolButton* TestMainWindow::toolButton(const QString &text) const {
     return nullptr;
 }
 
+bool TestMainWindow::selectPort(const QString &name) {
+    m_window->setSearchText(name);
+    QAbstractItemModel *proxy = m_window->tableView()->model();
+    for (int row = 0; row < proxy->rowCount(); ++row) {
+        if (proxy->index(row, 0).data().toString() == name) {
+            m_window->tableView()->selectRow(row);
+            return true;
+        }
+    }
+    return false;
+}
+
 void TestMainWindow::onNextModal(const std::function<void(QWidget *)> &fn) {
     auto *timer = new QTimer(this);
     auto deadline = std::make_shared<int>(500); // 500 x 10 ms
@@ -436,35 +451,26 @@ void TestMainWindow::testPreviewDescribe() {
     QVERIFY(!dialog.applyButton()->isDefault());
 }
 
-void TestMainWindow::testUpgradeWithNothingToDoStartsNoProcess() {
-    // Real fixture: every outdated port (clang, compiler-rt, lld, llvm) is locked.
-    auto restore = qScopeGuard([this]() { removeFakeTools(); });
+void TestMainWindow::testUpgradeButtonsWhenEveryOutdatedIsLocked() {
+    // Real fixture: every outdated port (clang, compiler-rt, lld, llvm) is locked,
+    // so there is nothing to upgrade and neither button may start anything.
     QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    auto restore = qScopeGuard([this]() { removeFakeTools(); });
     m_window->setSearchText(QString());
     m_window->tableView()->clearSelection();
-    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
 
-    QString seenName, seenText;
-    onNextModal([&](QWidget *w) {
-        seenName = w->objectName();
-        if (auto *box = qobject_cast<QMessageBox*>(w)) {
-            seenText = box->text();
-            box->accept();
-        } else if (auto *dlg = qobject_cast<QDialog*>(w)) {
-            dlg->reject();
-        }
-    });
     QToolButton *upgrade = toolButton(QStringLiteral("Upgrade"));
-    QVERIFY(upgrade && upgrade->isEnabled());
-    upgrade->click();
+    QToolButton *upgradeAll = toolButton(QStringLiteral("Upgrade All"));
+    QVERIFY(upgrade && upgradeAll);
+    QVERIFY(!upgrade->isEnabled());      // no selection
+    QVERIFY(!upgradeAll->isEnabled());   // nothing outdated and unlocked
 
-    QCOMPARE(seenName, QStringLiteral("nothingToDoMessage"));
-    for (const QString &p : {QStringLiteral("llvm"), QStringLiteral("clang"), QStringLiteral("lld"), QStringLiteral("compiler-rt")}) {
-        QVERIFY2(seenText.contains(p), qPrintable(seenText));
-    }
-    QTest::qWait(200);
+    // Selecting the outdated but locked llvm does not enable Upgrade either.
+    QVERIFY(selectPort(QStringLiteral("llvm")));
+    QVERIFY(!upgrade->isEnabled());
+    QVERIFY(!upgradeAll->isEnabled());
+    m_window->setSearchText(QString());
     QVERIFY(probeLines().isEmpty());
-    QCOMPARE(spyFinished.count(), 0);
 }
 
 void TestMainWindow::testUpgradePreviewGatesExecution() {
@@ -500,8 +506,9 @@ void TestMainWindow::testUpgradePreviewGatesExecution() {
     m_window->setSearchText(QString());
     m_window->tableView()->clearSelection();
     QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
-    QToolButton *upgrade = toolButton(QStringLiteral("Upgrade"));
+    QToolButton *upgrade = toolButton(QStringLiteral("Upgrade All"));
     QVERIFY(upgrade && upgrade->isEnabled());
+    QVERIFY(!toolButton(QStringLiteral("Upgrade"))->isEnabled()); // nothing selected
 
     // 1. Reject: the preview is shown and no process starts.
     QString summary;
@@ -532,6 +539,43 @@ void TestMainWindow::testUpgradePreviewGatesExecution() {
     QVERIFY(spyFinished.wait(5000));
     QCOMPARE(spyFinished.first().at(0).toInt(), 0);
     QCOMPARE(probeLines(), QStringList{QStringLiteral("update gtk3")});
+    QTRY_VERIFY(upgrade->isEnabled()); // operation finished, buttons re-evaluated
+
+    // 3. Upgrade of the selected package only: enabled for gtk3 (outdated,
+    //    unlocked), disabled for glibc (up to date); Upgrade All stays enabled.
+    QToolButton *upgradeOne = toolButton(QStringLiteral("Upgrade"));
+    QVERIFY(selectPort(QStringLiteral("glibc")));
+    QVERIFY(!upgradeOne->isEnabled());
+    QVERIFY(upgrade->isEnabled());
+    QVERIFY(selectPort(QStringLiteral("gtk3")));
+    QVERIFY(upgradeOne->isEnabled());
+    QString single;
+    onNextModal([&](QWidget *w) {
+        if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(w)) {
+            single = dlg->summaryText();
+            dlg->reject();
+        } else if (auto *d = qobject_cast<QDialog*>(w)) {
+            d->reject();
+        }
+    });
+    upgradeOne->click();
+    QVERIFY2(single.contains(QStringLiteral("1. prt-get update gtk3")), qPrintable(single));
+    QVERIFY(!single.contains(QStringLiteral("Skipped because locked")));
+    m_window->setSearchText(QString());
+    QCOMPARE(probeLines().size(), 1);
+}
+
+void TestMainWindow::testRefreshDoesNotLeaveStaleButtons() {
+    QVERIFY(selectPort(QStringLiteral("gtk3")));
+    QVERIFY(toolButton(QStringLiteral("Remove"))->isEnabled()); // installed, not core
+    m_window->refreshCatalog();
+    // The reload cleared the selection: nothing selected, nothing to act on.
+    QVERIFY(!m_window->tableView()->selectionModel()->hasSelection());
+    QVERIFY(!toolButton(QStringLiteral("Remove"))->isEnabled());
+    QVERIFY(!toolButton(QStringLiteral("Install"))->isEnabled());
+    QVERIFY(!toolButton(QStringLiteral("Upgrade"))->isEnabled());
+    QVERIFY(!toolButton(QStringLiteral("Lock"))->isEnabled());
+    m_window->setSearchText(QString());
 }
 
 void TestMainWindow::testInstallPreviewRejectStartsNoProcess() {
