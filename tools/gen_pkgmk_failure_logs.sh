@@ -10,7 +10,9 @@
 # Safety: refuses to run as root. pkgmk is invoked with -cf <sandbox conf>, so
 # /etc/pkgmk.conf (and any signing key it names) is never read; all source,
 # work and package directories live in the sandbox; no -i/-u, so pkgadd is
-# never run; the only download is a file:// URL to a missing local path.
+# never run. No network access: the download case is a file:// URL to a missing
+# local path, and the signature case uses the port's distfile already on disk
+# (the case is skipped if it is not there, rather than downloading it).
 #
 # Usage: sh gen_pkgmk_failure_logs.sh OUTDIR [SANDBOX_PARENT]
 # Output: OUTDIR/<case>.log, OUTDIR/<case>.rc, OUTDIR/PROVENANCE.txt
@@ -116,19 +118,26 @@ pkgfile dirperm '' '	true'
 sed -i "s|^PKGMK_PACKAGE_DIR=.*|PKGMK_PACKAGE_DIR=\"$SB/dirperm/does-not-exist\"|" "$SB/dirperm/pkgmk.conf"
 run dirperm
 
-# Signature mismatch: a real signed port whose Pkgfile no longer matches .signature
+# Signature mismatch: a real signed port whose Pkgfile no longer matches .signature.
+# Its source tarball must already be on disk (port dir or /usr/ports/distfiles);
+# it is copied into the sandbox so pkgmk -d finds it and never downloads.
 SIGPORT=""
+SIGSRC=""
 for p in /usr/ports/contrib/lz4 /usr/ports/*/lz4; do
-    [ -f "$p/.signature" ] && [ -f "$p/Pkgfile" ] && { SIGPORT=$p; break; }
+    [ -f "$p/.signature" ] && [ -f "$p/Pkgfile" ] || continue
+    for f in "$p"/lz4-*.tar.gz /usr/ports/distfiles/lz4-*.tar.gz; do
+        [ -f "$f" ] && { SIGPORT=$p; SIGSRC=$f; break 2; }
+    done
 done
 if [ -n "$SIGPORT" ]; then
     port signature
     cp "$SIGPORT/Pkgfile" "$SIGPORT/.signature" "$SB/signature/"
+    cp "$SIGSRC" "$SB/signature/src/"
     [ -f "$SIGPORT/.footprint" ] && cp "$SIGPORT/.footprint" "$SB/signature/"
     echo '# octocrux sandbox change' >> "$SB/signature/Pkgfile"
     run signature
 else
-    echo "signature: skipped (no signed lz4 port found)"
+    echo "signature: skipped (no signed lz4 port with its distfile on disk)"
 fi
 
 # Interrupted: SIGTERM to pkgmk while build() runs (what QProcess::terminate()
@@ -150,7 +159,7 @@ printf '%-14s rc=%s\n' interrupt "$(cat "$OUTDIR/interrupt.rc")"
     echo "curl: $(curl --version | head -n 1)"
     echo "bsdtar: $(bsdtar --version | head -n 1)"
     echo "uid: $(id -u) (unprivileged)"
-    echo "signature source port: ${SIGPORT:-<none>}"
+    echo "signature source port: ${SIGPORT:-<none>} (distfile: ${SIGSRC:-<none>})"
 } > "$OUTDIR/PROVENANCE.txt"
 
 rm -rf "$SB"

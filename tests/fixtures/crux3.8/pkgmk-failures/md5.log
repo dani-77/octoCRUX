@@ -2,4 +2,4 @@
 =======> ERROR: Md5sum mismatch found:
 MISSING   00000000000000000000000000000000  data.txt
 NEW       b1946ac92492d2347c6235b4d2611184  data.txt
-=======> ERROR: Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.tGXv00/md5/pkg/octo-md5#1.0-1.pkg.tar.zst' failed.
+=======> ERROR: Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.OLcC0n/md5/pkg/octo-md5#1.0-1.pkg.tar.zst' failed.

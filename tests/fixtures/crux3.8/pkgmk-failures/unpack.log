@@ -1,6 +1,6 @@
 =======> WARNING: Signature file not found, falling back to old md5sum checking.
 =======> WARNING: Packages should be built as root.
-=======> Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.tGXv00/unpack/pkg/octo-unpack#1.0-1.pkg.tar.zst'.
-bsdtar -p -o -C /tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.tGXv00/unpack/work/octo-unpack/src -xf octo-unpack-1.0.tar.gz
+=======> Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.OLcC0n/unpack/pkg/octo-unpack#1.0-1.pkg.tar.zst'.
+bsdtar -p -o -C /tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.OLcC0n/unpack/work/octo-unpack/src -xf octo-unpack-1.0.tar.gz
 bsdtar: Error opening archive: Unrecognized archive format
-=======> ERROR: Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.tGXv00/unpack/pkg/octo-unpack#1.0-1.pkg.tar.zst' failed.
+=======> ERROR: Building '/tmp/claude-1000/-home-dani77-octoCRUX/53850acf-d784-4a7a-8ada-1ae7c809ab81/scratchpad/octocrux-pkgmk-sandbox.OLcC0n/unpack/pkg/octo-unpack#1.0-1.pkg.tar.zst' failed.

@@ -55,7 +55,11 @@ signals:
     void outputReceived(const QString &line, bool isError);
     void phaseChanged(const QString &phase);
     void processFinished(int exitCode, OperationErrorKind errorKind, const QString &summary);
-    /** The process ignored a cancellation request for the whole grace period. */
+    /**
+     * The process ignored a cancellation request for the whole grace period.
+     * Emitted alongside the warning line on outputReceived(). Nothing in the UI
+     * connects to it yet: users see only that output line in the Output tab.
+     */
     void cancellationStalled(qint64 pid, int elapsedMs);
 
 private slots:
