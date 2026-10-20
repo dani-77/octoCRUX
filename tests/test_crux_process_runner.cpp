@@ -17,6 +17,7 @@ private slots:
     void testInteractivePromptGetsEof();
     void testCancelStalledWarnsWithoutKill();
     void testCarriageReturnProgressIsTransient();
+    void testCancelledAuthenticationIsReported();
 };
 
 void TestCruxProcessRunner::testSuccessfulExecution() {
@@ -218,6 +219,20 @@ void TestCruxProcessRunner::testCarriageReturnProgressIsTransient() {
     QVERIFY(!spyCutOutput.isEmpty());
     QCOMPARE(spyCutOutput.last().at(0).toString(), QStringLiteral(" 27 548.0M"));
     QVERIFY(!cut.capturedLog().contains(QLatin1Char('\r')));
+}
+
+void TestCruxProcessRunner::testCancelledAuthenticationIsReported() {
+    // The helper's own lines from the owner's 2026-10-21 run (password dialog
+    // cancelled), replayed on stderr with qt-sudo's exit code 1.
+    CruxProcessRunner runner;
+    QSignalSpy spyFinished(&runner, &CruxProcessRunner::processFinished);
+    QVERIFY(runner.startProcess(QStringLiteral("sh"), {QStringLiteral("-c"),
+        QStringLiteral("printf 'Password: \\nsudo: a password is required\\n' >&2; exit 1")}));
+    QVERIFY(spyFinished.wait(5000));
+    const QList<QVariant> args = spyFinished.takeFirst();
+    QCOMPARE(args.at(0).toInt(), 1);
+    QCOMPARE(args.at(1).value<OperationErrorKind>(), OperationErrorKind::AuthenticationError);
+    QVERIFY(args.at(2).toString().contains(QStringLiteral("nothing was run as root")));
 }
 
 QTEST_MAIN(TestCruxProcessRunner)

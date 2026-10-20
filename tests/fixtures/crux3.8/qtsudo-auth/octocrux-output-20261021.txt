@@ -1,0 +1,107 @@
+
+[octoCRUX] Operation finished successfully: Operation completed successfully
+
+[octoCRUX] Unlocking criu
+Password:
+
+[octoCRUX ALERT] Rejected configuration file(s) found in /var/lib/pkg/rejected:
+/var/lib/pkg/rejected/etc/pam.d/common-session
+/var/lib/pkg/rejected/etc/group
+/var/lib/pkg/rejected/etc/passwd
+/var/lib/pkg/rejected/etc/fstab
+/var/lib/pkg/rejected/etc/cups/cupsd.conf
+/var/lib/pkg/rejected/etc/cups/cupsd.conf.default
+/var/lib/pkg/rejected/etc/dbus-1/system.d/cups.conf
+/var/lib/pkg/rejected/etc/grub.d/00_header
+/var/lib/pkg/rejected/etc/grub.d/20_linux_xen
+/var/lib/pkg/rejected/etc/grub.d/10_linux
+/var/lib/pkg/rejected/etc/grub.d/30_os-prober
+/var/lib/pkg/rejected/etc/grub.d/30_uefi-firmware
+/var/lib/pkg/rejected/etc/udev/udev.conf
+/var/lib/pkg/rejected/etc/shadow
+/var/lib/pkg/rejected/etc/lvm/lvmlocal.conf
+/var/lib/pkg/rejected/etc/lvm/lvm.conf
+/var/lib/pkg/rejected/etc/ssl/misc/tsget.pl
+
+
+[octoCRUX] Operation finished successfully: Operation completed successfully
+
+[octoCRUX] Locking criu
+Password:
+sudo: a password is required
+
+[octoCRUX ALERT] Rejected configuration file(s) found in /var/lib/pkg/rejected:
+/var/lib/pkg/rejected/etc/pam.d/common-session
+/var/lib/pkg/rejected/etc/group
+/var/lib/pkg/rejected/etc/passwd
+/var/lib/pkg/rejected/etc/fstab
+/var/lib/pkg/rejected/etc/cups/cupsd.conf
+/var/lib/pkg/rejected/etc/cups/cupsd.conf.default
+/var/lib/pkg/rejected/etc/dbus-1/system.d/cups.conf
+/var/lib/pkg/rejected/etc/grub.d/00_header
+/var/lib/pkg/rejected/etc/grub.d/20_linux_xen
+/var/lib/pkg/rejected/etc/grub.d/10_linux
+/var/lib/pkg/rejected/etc/grub.d/30_os-prober
+/var/lib/pkg/rejected/etc/grub.d/30_uefi-firmware
+/var/lib/pkg/rejected/etc/udev/udev.conf
+/var/lib/pkg/rejected/etc/shadow
+/var/lib/pkg/rejected/etc/lvm/lvmlocal.conf
+/var/lib/pkg/rejected/etc/lvm/lvm.conf
+/var/lib/pkg/rejected/etc/ssl/misc/tsget.pl
+
+
+[octoCRUX] Operation failed (exit code 1, error: General error): Operation failed with error
+
+[octoCRUX] Locking criu
+Password:
+Sorry, try again.
+Password:
+Sorry, try again.
+Password:
+
+[octoCRUX ALERT] Rejected configuration file(s) found in /var/lib/pkg/rejected:
+/var/lib/pkg/rejected/etc/pam.d/common-session
+/var/lib/pkg/rejected/etc/group
+/var/lib/pkg/rejected/etc/passwd
+/var/lib/pkg/rejected/etc/fstab
+/var/lib/pkg/rejected/etc/cups/cupsd.conf
+/var/lib/pkg/rejected/etc/cups/cupsd.conf.default
+/var/lib/pkg/rejected/etc/dbus-1/system.d/cups.conf
+/var/lib/pkg/rejected/etc/grub.d/00_header
+/var/lib/pkg/rejected/etc/grub.d/20_linux_xen
+/var/lib/pkg/rejected/etc/grub.d/10_linux
+/var/lib/pkg/rejected/etc/grub.d/30_os-prober
+/var/lib/pkg/rejected/etc/grub.d/30_uefi-firmware
+/var/lib/pkg/rejected/etc/udev/udev.conf
+/var/lib/pkg/rejected/etc/shadow
+/var/lib/pkg/rejected/etc/lvm/lvmlocal.conf
+/var/lib/pkg/rejected/etc/lvm/lvm.conf
+/var/lib/pkg/rejected/etc/ssl/misc/tsget.pl
+
+
+[octoCRUX] Operation finished successfully: Operation completed successfully
+
+[octoCRUX] Unlocking criu
+Password:
+
+[octoCRUX ALERT] Rejected configuration file(s) found in /var/lib/pkg/rejected:
+/var/lib/pkg/rejected/etc/pam.d/common-session
+/var/lib/pkg/rejected/etc/group
+/var/lib/pkg/rejected/etc/passwd
+/var/lib/pkg/rejected/etc/fstab
+/var/lib/pkg/rejected/etc/cups/cupsd.conf
+/var/lib/pkg/rejected/etc/cups/cupsd.conf.default
+/var/lib/pkg/rejected/etc/dbus-1/system.d/cups.conf
+/var/lib/pkg/rejected/etc/grub.d/00_header
+/var/lib/pkg/rejected/etc/grub.d/20_linux_xen
+/var/lib/pkg/rejected/etc/grub.d/10_linux
+/var/lib/pkg/rejected/etc/grub.d/30_os-prober
+/var/lib/pkg/rejected/etc/grub.d/30_uefi-firmware
+/var/lib/pkg/rejected/etc/udev/udev.conf
+/var/lib/pkg/rejected/etc/shadow
+/var/lib/pkg/rejected/etc/lvm/lvmlocal.conf
+/var/lib/pkg/rejected/etc/lvm/lvm.conf
+/var/lib/pkg/rejected/etc/ssl/misc/tsget.pl
+
+
+[octoCRUX] Operation finished successfully: Operation completed successfully

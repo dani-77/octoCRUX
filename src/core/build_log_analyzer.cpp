@@ -53,6 +53,11 @@ const QString kBuildingPhase = QStringLiteral("=======> Building '"); // info "B
 // pkgmk runs build() as (set -e -x ; build), so its xtrace always starts with this line.
 const QString kBuildTraceStart = QStringLiteral("+ build");
 
+// sudo 1.9.17p2 through qt-sudo 2.4.1 when the password dialog is cancelled
+// (tests/fixtures/crux3.8/qtsudo-auth). "Sorry, try again." alone is not an
+// error: sudo retries, and the run may still succeed.
+const QString kSudoPasswordRequired = QStringLiteral("sudo: a password is required");
+
 // libc strerror(ENOSPC); printed by whichever tool hit the full filesystem.
 const QString kNoSpace = QStringLiteral("No space left on device");
 // prt-get 5.19.9 message fragment when its own pkgadd step fails. Taken from the
@@ -107,6 +112,14 @@ OperationErrorKind BuildLogAnalyzer::classifyLog(const QString &logOutput, int e
                 failedBuildHadTrace = traceInCurrentPort;
                 traceInCurrentPort = false;
             }
+        }
+    }
+
+    // Authentication failed: the command never ran as root, so nothing else in the
+    // log describes a build.
+    for (const QString &line : lines) {
+        if (line.trimmed() == kSudoPasswordRequired) {
+            return OperationErrorKind::AuthenticationError;
         }
     }
 
@@ -170,6 +183,8 @@ QString BuildLogAnalyzer::extractSummary(const QString &logOutput, OperationErro
         return QStringLiteral("Compilation error: compiler or build() command returned failure");
     case OperationErrorKind::InstallError:
         return QStringLiteral("Installation error: pkgadd failed to install package");
+    case OperationErrorKind::AuthenticationError:
+        return QStringLiteral("Authentication failed or was cancelled; nothing was run as root and no changes were made");
     case OperationErrorKind::GeneralError:
     default: {
         const QString failing = extractFailingPort(logOutput);
@@ -246,6 +261,7 @@ QString BuildLogAnalyzer::errorKindToString(OperationErrorKind kind) {
     case OperationErrorKind::DiskSpaceError:   return QStringLiteral("Out of disk space (ENOSPC)");
     case OperationErrorKind::ProtectedPackage: return QStringLiteral("Core package protection");
     case OperationErrorKind::Cancelled:        return QStringLiteral("Cancelled by user");
+    case OperationErrorKind::AuthenticationError: return QStringLiteral("Authentication failed");
     default:                                   return QStringLiteral("Unknown error");
     }
 }

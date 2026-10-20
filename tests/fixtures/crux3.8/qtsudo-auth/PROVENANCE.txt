@@ -1,0 +1,26 @@
+octocrux-output-20261021.txt
+=============================
+
+Source: the OctoCRUX Output tab, copied verbatim by the owner (Daniel Azevedo)
+on 2026-10-21 around 00:46-00:53, T480s, sysvd77 (CRUX 3.8 derivative).
+
+Build: OctoCRUX main at 44ed952 (before the AuthenticationError and
+rejected-alert changes, so the "[octoCRUX] Operation ..." summary lines and
+the repeated alerts show the old behaviour).
+
+Helper: qt-sudo 2.4.1 with the sudo backend (qt-sudo -d), sudo 1.9.17p2
+(version from the 2026-10-19 capture, OPEN_QUESTIONS 2.9). The NOPASSWD sudoers
+rule had been commented out by the owner, so sudo asked for a password.
+
+Sequence, as performed by the owner:
+  1. Unlock criu: password entered -> success.
+  2. Lock criu: qt-sudo password dialog cancelled -> qt-sudo shows
+     "Falha no processo dependente sudo! sudo: a password is required",
+     owner pressed OK -> helper exit code 1.
+  3. Lock criu: two wrong passwords, then the right one -> success.
+  4. Unlock criu: password entered -> success.
+
+The lines "Password: ", "sudo: a password is required" and "Sorry, try
+again." are sudo's own stderr, passed through by qt-sudo. Everything else is
+OctoCRUX's own output. Verified afterwards: /var/lib/pkg/prt-get.locker
+(changed 00:53:20) lists only llvm clang lld compiler-rt, i.e. criu unlocked.

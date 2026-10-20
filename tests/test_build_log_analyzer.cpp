@@ -23,6 +23,7 @@ private slots:
     void testExtractFailingPort();
     void testExtractSummary();
     void testExtractFootprintFailures();
+    void testRealQtSudoAuthentication();
 
 private:
     static QString fixture(const QString &name);
@@ -162,6 +163,38 @@ void TestBuildLogAnalyzer::testExtractFootprintFailures() {
              (QList<F>{{QStringLiteral("octo-footprint-new"), true}, {QStringLiteral("octo-footprint"), false}}));
     QVERIFY(BuildLogAnalyzer::extractFootprintFailures(fixture(QStringLiteral("md5"))).isEmpty());
     QVERIFY(BuildLogAnalyzer::extractFootprintFailures(fixture(QStringLiteral("success"))).isEmpty());
+}
+
+void TestBuildLogAnalyzer::testRealQtSudoAuthentication() {
+    // Owner's Output tab of 2026-10-21 (qt-sudo 2.4.1, sudo 1.9.17p2), split into the
+    // four operations it records; see tests/fixtures/crux3.8/qtsudo-auth/PROVENANCE.txt.
+    QFile f(QStringLiteral(OCTOCRUX_SOURCE_DIR "/tests/fixtures/crux3.8/qtsudo-auth/octocrux-output-20261021.txt"));
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    const QString all = QString::fromUtf8(f.readAll());
+    static const QRegularExpression opStart(QStringLiteral("^\\[octoCRUX\\] (?:Locking|Unlocking) criu$"),
+                                            QRegularExpression::MultilineOption);
+    QStringList ops;
+    QRegularExpressionMatchIterator it = opStart.globalMatch(all);
+    QList<qsizetype> starts;
+    while (it.hasNext()) starts << it.next().capturedStart();
+    for (int i = 0; i < starts.size(); ++i) {
+        ops << all.mid(starts[i], (i + 1 < starts.size() ? starts[i + 1] : all.size()) - starts[i]);
+    }
+    QCOMPARE(ops.size(), 4);
+
+    // 2. Password dialog cancelled: helper exit code 1.
+    QVERIFY(ops[1].contains(QStringLiteral("sudo: a password is required")));
+    QCOMPARE(BuildLogAnalyzer::classifyLog(ops[1], 1), OperationErrorKind::AuthenticationError);
+    QVERIFY(BuildLogAnalyzer::extractSummary(ops[1], OperationErrorKind::AuthenticationError)
+                .contains(QStringLiteral("no changes were made")));
+    // 3. Two wrong passwords, then the right one: success; "Sorry, try again." is not an error.
+    QVERIFY(ops[2].contains(QStringLiteral("Sorry, try again.")));
+    QCOMPARE(BuildLogAnalyzer::classifyLog(ops[2], 0), OperationErrorKind::None);
+    // 1. and 4. Plain successes.
+    QCOMPARE(BuildLogAnalyzer::classifyLog(ops[0], 0), OperationErrorKind::None);
+    QCOMPARE(BuildLogAnalyzer::classifyLog(ops[3], 0), OperationErrorKind::None);
+    // A real build failure log is never mistaken for an authentication failure.
+    QCOMPARE(BuildLogAnalyzer::classifyLog(fixture(QStringLiteral("md5")), 1), OperationErrorKind::ChecksumError);
 }
 
 QTEST_MAIN(TestBuildLogAnalyzer)

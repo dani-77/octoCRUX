@@ -59,7 +59,8 @@ enum class OperationErrorKind {
     SignatureError = 10,  // signify signature mismatch or verification failure (E_SIGNATURE)
     DiskSpaceError = 11,  // ENOSPC on work directory mount
     ProtectedPackage = 12, // Core package removal blocked by protection policy
-    Cancelled = 13         // Stopped at the user's request (not a failure of the operation itself)
+    Cancelled = 13,        // Stopped at the user's request (not a failure of the operation itself)
+    AuthenticationError = 14 // Privilege helper authentication failed or was cancelled: nothing ran as root
 };
 
 /**
