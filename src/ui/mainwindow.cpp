@@ -304,6 +304,9 @@ void MainWindow::setupStatusBar() {
     bar->addPermanentWidget(m_progressBar);
 
     m_statusFilterLabel = new QLabel(bar);
+    m_statusFilterLabel->setStyleSheet(QStringLiteral("color: gray; padding-left: 6px;"));
+    bar->addWidget(m_statusFilterLabel);
+
     QString helperName;
     switch (m_backend->privilegeHelperType()) {
     case PrivilegeHelperType::QtSudo: helperName = QStringLiteral("qt-sudo"); break;

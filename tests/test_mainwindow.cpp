@@ -4,6 +4,8 @@
 #include <QPushButton>
 #include <QScopeGuard>
 #include <QSignalSpy>
+#include <QStatusBar>
+#include <QLabel>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -54,6 +56,7 @@ private slots:
     void testSearchBoxFiltering();
     void testPortSelectionUpdatesDetailTabs();
     void testLiveExecutionStreaming();
+    void testStatusBarLabelsDoNotOverlap();
     void testPreviewDescribe();
     void testUpgradeWithNothingToDoStartsNoProcess();
     void testUpgradePreviewGatesExecution();
@@ -327,6 +330,26 @@ void TestMainWindow::onNextModal(const std::function<void(QWidget *)> &fn) {
         }
     });
     timer->start(10);
+}
+
+void TestMainWindow::testStatusBarLabelsDoNotOverlap() {
+    m_window->show();
+    QVERIFY(QTest::qWaitForWindowExposed(m_window.get()));
+    m_window->setSearchText(QString());
+
+    QLabel *summary = nullptr;
+    QLabel *filter = nullptr;
+    for (QLabel *l : m_window->statusBar()->findChildren<QLabel*>()) {
+        if (l->text().startsWith(QStringLiteral("Total: "))) summary = l;
+        if (l->text().startsWith(QStringLiteral("Showing all "))) filter = l;
+    }
+    QVERIFY(summary && filter);
+    QTRY_VERIFY(summary->isVisible() && filter->isVisible());
+    // Both labels must be laid out by the status bar, side by side.
+    QVERIFY2(!summary->geometry().intersects(filter->geometry()),
+             qPrintable(QStringLiteral("summary %1,%2 %3x%4 overlaps filter %5,%6 %7x%8")
+                 .arg(summary->x()).arg(summary->y()).arg(summary->width()).arg(summary->height())
+                 .arg(filter->x()).arg(filter->y()).arg(filter->width()).arg(filter->height())));
 }
 
 void TestMainWindow::testPreviewDescribe() {
