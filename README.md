@@ -72,8 +72,11 @@ The resulting binaries will be:
 OctoCRUX enforces strict empirical verification and the **SCOFS Protocol** (*Special Case Oh Foda-Se*). All parsers, operations planners, process runners, and GUI components are covered by 11 automated test suites:
 
 ```bash
-ctest --test-dir build --output-on-failure
+ctest --test-dir build --output-on-failure            # all suites (~40 s)
+ctest --test-dir build --output-on-failure -LE slow   # routine run: skips suites labelled 'slow'
 ```
+
+`test_live_transaction_execution` carries the CTest label `slow` (it runs a simulated build for about 36 s). Run it before committing changes to the execution engine.
 
 ### Test Suites Included:
 

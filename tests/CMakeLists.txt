@@ -188,3 +188,6 @@ target_compile_definitions(test_live_transaction_execution PRIVATE
 )
 
 add_test(NAME test_live_transaction_execution COMMAND test_live_transaction_execution)
+
+# Runs a simulated build for ~36 s; excluded from routine runs with 'ctest -LE slow'
+set_tests_properties(test_live_transaction_execution PROPERTIES LABELS slow)
