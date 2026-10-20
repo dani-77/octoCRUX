@@ -77,6 +77,14 @@
   ├── Fix: single-invocation transaction batching (qt-sudo -d prt-get depinst <all targets>)
   ├── Fix: POSIX single-quote escaping in su -c; SIGKILL watchdog eliminated (SIGTERM only)
   └── Complete Verification: 11 test suites (including 36s real-process live test), 100% green in 37.38s
+
+[Milestone 13: T480s Session (2026-10-20) — Execution Capture, Level 2 Re-check, Analyzer & Runner Fixes]
+  ├── Capture: octocrux-exec-capture-20261020-214106 (pkgmk E_* codes, messages, prt-get --test)
+  ├── Finding: pkgmk 5.40.12 defines E_FOOTPRINT/E_BUILD/E_INSTALL but exits 1 for them
+  ├── Level 2: live check matches independent counts (2306 ports, 546 installed, 11 outdated, 5 locked)
+  ├── Fix: BuildLogAnalyzer classifies from exact pkgmk lines; exit code values never mapped
+  ├── Fix: child stdin closed (prompts get EOF); stalled-cancel warning, no SIGKILL; slow CTest label
+  └── 5 fixes via fix/analyzer-and-runner + 2 review follow-ups, merged to main and pushed (904aceb); see SESSION_REPORT.md
 ```
 
 ---
@@ -590,6 +598,15 @@ Resolved fatal runner disconnect, password prompt multiplicity, and shell inject
 - Applied POSIX single-quote shell escaping to `su -c` in `PrivilegeHelper`.
 - Validated via real-process integration test (`test_live_transaction_execution`) running for 34 seconds with line-by-line live streaming, prompt cancellation handling, and probe-log verified single-command execution.
 - All 11 test suites passing 100% green in 37.38s.
+
+### 7.6.1 Milestone 13 — T480s Session 2026-10-20 (Reviewed, Merged)
+Branch `fix/analyzer-and-runner`, one commit per fix, fast-forwarded into `main` and pushed by the owner (`3a7755a`); two review follow-ups were committed directly on `main` and pushed (`796861b` offline fixture generator and stalled-cancel wording, `904aceb` window close refused during an operation):
+- `0aeac3e` BuildLogAnalyzer rewritten from the exact pkgutils 5.40.12 pkgmk messages; exit code values are ignored (prt-get's mapping is undocumented; pkgmk exits 1 for footprint/build/install). Fixtures are real pkgmk output from unprivileged sandbox runs (`tools/gen_pkgmk_failure_logs.sh`, `tests/fixtures/crux3.8/pkgmk-failures/`). See OPEN_QUESTIONS.md 2.14.
+- `fef1538` CruxProcessRunner closes the child's stdin after start (interactive prompt → EOF, not a hang).
+- `c329627` Cancellation watchdog: after 10 s a warning line in the Output tab (plus a `cancellationStalled()` signal no UI code uses yet), Cancel stays usable, never SIGKILL. The QProcess-destructor SIGKILL path is kept out of normal use: `MainWindow` refuses to close during an operation (owner decision).
+- `1b3e333` README/ARCHITECTURE no longer claim orphan-free cancellation or process-group signalling.
+- `3a7755a` `test_live_transaction_execution` labelled `slow` (`ctest -LE slow`).
+- Not done (owner-supervised): GUI checklist (§6), first real mutation (§7), cancellation test 2.10.3 (§8).
 
 ### 7.7 Next Step: Phase 5 — System Tray Daemon (`octocrux-notifier`) & Settings
 1. **System Tray Daemon (`octocrux-notifier`):**
