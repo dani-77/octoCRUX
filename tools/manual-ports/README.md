@@ -39,7 +39,7 @@ both phases. The tree stopped within about a second, even during `sleep 180`.
 The work directory stayed. The cause was reproduced unprivileged: the trap's
 first `echo` hits the pipe whose reader (prt-get) already died (OPEN_QUESTIONS
 2.10.3). Since then OctoCRUX offers to remove the leftover after a Cancel;
-accepting it should leave `/usr/ports/work/` without `octo-cancel-test`.
+accepting it should leave `/usr/ports/work/` without `octo-cancel-test`. **[owner-reported 2026-10-21, 0.1.1 build with qt-sudo]:** the offer removed the leftover `zsh` and `octo-cancel-test` directories; `/usr/ports/work/` was empty afterwards, with no prt-get or pkgmk left running **[verified]**.
 
 Without `.signature` or `.md5sum`, pkgmk warns and creates new ones. If your
 `pkgmk.conf` requires signatures, tick the signature exception (`-is`) in the
