@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "core/build_log_analyzer.h"
 #include "transaction_preview_dialog.h"
+#include "settings_dialog.h"
+#include "backend/privilege_helper.h"
 
 #include <QApplication>
 #include <QTableView>
@@ -233,6 +235,14 @@ void MainWindow::setupToolbar() {
     m_btnCancel->setEnabled(false);
     toolbar->addWidget(m_btnCancel);
     connect(m_btnCancel, &QToolButton::clicked, this, &MainWindow::onCancelOperationClicked);
+
+    toolbar->addSeparator();
+
+    m_btnSettings = new QToolButton(toolbar);
+    m_btnSettings->setText(QStringLiteral("Settings..."));
+    m_btnSettings->setToolTip(QStringLiteral("Privilege helper and cancel grace period"));
+    toolbar->addWidget(m_btnSettings);
+    connect(m_btnSettings, &QToolButton::clicked, this, &MainWindow::onSettingsClicked);
 }
 
 void MainWindow::setupCentralWidget() {
@@ -389,6 +399,14 @@ void MainWindow::setupStatusBar() {
     m_statusFilterLabel->setStyleSheet(QStringLiteral("color: gray; padding-left: 6px;"));
     bar->addWidget(m_statusFilterLabel);
 
+    m_backendLabel = new QLabel(bar);
+    m_backendLabel->setStyleSheet(QStringLiteral("color: gray; padding-right: 6px;"));
+    bar->addPermanentWidget(m_backendLabel);
+    updateBackendLabel();
+}
+
+void MainWindow::updateBackendLabel() {
+    if (!m_backendLabel) return;
     QString helperName;
     switch (m_backend->privilegeHelperType()) {
     case PrivilegeHelperType::QtSudo: helperName = QStringLiteral("qt-sudo"); break;
@@ -397,9 +415,7 @@ void MainWindow::setupStatusBar() {
     case PrivilegeHelperType::Su: helperName = QStringLiteral("su (TTY)"); break;
     case PrivilegeHelperType::None: helperName = QStringLiteral("none"); break;
     }
-    m_backendLabel = new QLabel(QStringLiteral("CRUX 3.8 [%1]").arg(helperName), bar);
-    m_backendLabel->setStyleSheet(QStringLiteral("color: gray; padding-right: 6px;"));
-    bar->addPermanentWidget(m_backendLabel);
+    m_backendLabel->setText(QStringLiteral("CRUX 3.8 [%1]").arg(helperName));
 }
 
 void MainWindow::checkPrivilegeHelper() {
@@ -795,9 +811,11 @@ void MainWindow::updateActionButtons() {
         m_btnLock->setEnabled(false);
         m_btnRefresh->setEnabled(false);
         m_btnCancel->setEnabled(true);
+        m_btnSettings->setEnabled(false);
         if (m_buildChecksBox) m_buildChecksBox->setEnabled(false);
         return;
     }
+    m_btnSettings->setEnabled(m_settings != nullptr);
     if (m_buildChecksBox) m_buildChecksBox->setEnabled(!m_detailPort.isEmpty());
 
     // Independent of the selection: the system-wide upgrade.
@@ -964,6 +982,44 @@ void MainWindow::onCancelOperationClicked() {
 
 void MainWindow::setSettings(std::shared_ptr<OctoCruxSettings> settings) {
     m_settings = std::move(settings);
+    if (m_settings) {
+        m_backend->setCancelGracePeriodMs(m_settings->cancelGraceSeconds() * 1000);
+    }
+    updateActionButtons();
+}
+
+void MainWindow::applyPrivilegePreference() {
+    const std::optional<PrivilegeHelperType> preferred =
+        m_settings ? m_settings->preferredHelper() : std::nullopt;
+    const PrivilegeHelper::Resolution r = PrivilegeHelper::resolve(preferred);
+    m_backend->setPrivilegeHelperType(r.type);
+    updateBackendLabel();
+    if (r.fellBack && m_outputLogEdit) {
+        const QString used = PrivilegeHelper::helperBinary(r.type);
+        appendOutputPlain(m_outputLogEdit, QStringLiteral(
+            "[octoCRUX] Warning: the privilege helper chosen in Settings ('%1') is not in PATH; "
+            "using automatic detection ('%2').")
+            .arg(PrivilegeHelper::helperBinary(*preferred), used.isEmpty() ? QStringLiteral("none") : used));
+    }
+}
+
+void MainWindow::onSettingsClicked() {
+    if (m_operationInProgress || !m_settings) return;
+
+    SettingsDialog dialog(m_settings->preferredHelper(), m_settings->cancelGraceSeconds(), this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    m_settings->setPreferredHelper(dialog.preferredHelper());
+    m_settings->setCancelGraceSeconds(dialog.cancelGraceSeconds());
+    m_settings->sync();
+    m_backend->setCancelGracePeriodMs(m_settings->cancelGraceSeconds() * 1000);
+
+    const PrivilegeHelperType before = m_backend->privilegeHelperType();
+    applyPrivilegePreference();
+    if (m_backend->privilegeHelperType() != before) {
+        checkPrivilegeHelper(); // the same TTY / no-helper warning as at start
+    }
 }
 
 bool MainWindow::runTransaction(const QString &title, TransactionPlan plan) {

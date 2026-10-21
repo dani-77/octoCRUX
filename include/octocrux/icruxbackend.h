@@ -43,6 +43,9 @@ public:
     // --- Privilege helper configuration ---
     virtual void setPrivilegeHelperType(PrivilegeHelperType type) { Q_UNUSED(type); }
     virtual PrivilegeHelperType privilegeHelperType() const { return PrivilegeHelperType::None; }
+    /** How long cancelActiveOperation() waits before warning that the operation still runs. */
+    virtual void setCancelGracePeriodMs(int ms) { Q_UNUSED(ms); }
+    virtual int cancelGracePeriodMs() const { return 0; }
 
     // --- Mutations & Execution ---
     /**

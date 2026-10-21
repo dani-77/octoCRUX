@@ -41,6 +41,28 @@ QString PrivilegeHelper::helperBinary(PrivilegeHelperType type) {
     }
 }
 
+std::optional<PrivilegeHelperType> PrivilegeHelper::fromBinaryName(const QString &name) {
+    for (PrivilegeHelperType t : {PrivilegeHelperType::QtSudo, PrivilegeHelperType::Sudo,
+                                  PrivilegeHelperType::Doas, PrivilegeHelperType::Su}) {
+        if (name == helperBinary(t)) {
+            return t;
+        }
+    }
+    return std::nullopt;
+}
+
+PrivilegeHelper::Resolution PrivilegeHelper::resolve(std::optional<PrivilegeHelperType> preferred) {
+    Resolution r;
+    if (preferred.has_value() && *preferred != PrivilegeHelperType::None
+        && !QStandardPaths::findExecutable(helperBinary(*preferred)).isEmpty()) {
+        r.type = *preferred;
+        return r;
+    }
+    r.fellBack = preferred.has_value() && *preferred != PrivilegeHelperType::None;
+    r.type = probeAvailableHelper();
+    return r;
+}
+
 QStringList PrivilegeHelper::wrapCommand(
     const QString &program,
     const QStringList &arguments,

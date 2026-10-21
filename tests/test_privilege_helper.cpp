@@ -1,6 +1,11 @@
 #include <QTest>
 #include "backend/privilege_helper.h"
 
+#include <QDir>
+#include <QFile>
+#include <QScopeGuard>
+#include <QTemporaryDir>
+
 using namespace OctoCRUX;
 
 class TestPrivilegeHelper : public QObject {
@@ -14,6 +19,8 @@ private slots:
     void testWrapNone();
     void testHelperBinary();
     void testProbeAvailableHelper();
+    void testFromBinaryName();
+    void testResolvePreferredAndFallback();
 };
 
 void TestPrivilegeHelper::testWrapQtSudo() {
@@ -90,6 +97,46 @@ void TestPrivilegeHelper::testProbeAvailableHelper() {
             detected == PrivilegeHelperType::Doas ||
             detected == PrivilegeHelperType::Su ||
             detected == PrivilegeHelperType::None);
+}
+
+void TestPrivilegeHelper::testFromBinaryName() {
+    for (PrivilegeHelperType t : {PrivilegeHelperType::QtSudo, PrivilegeHelperType::Sudo,
+                                  PrivilegeHelperType::Doas, PrivilegeHelperType::Su}) {
+        QCOMPARE(PrivilegeHelper::fromBinaryName(PrivilegeHelper::helperBinary(t)), std::optional(t));
+    }
+    QVERIFY(!PrivilegeHelper::fromBinaryName(QStringLiteral("auto")).has_value());
+    QVERIFY(!PrivilegeHelper::fromBinaryName(QString()).has_value());
+    QVERIFY(!PrivilegeHelper::fromBinaryName(QStringLiteral("pkexec")).has_value());
+}
+
+void TestPrivilegeHelper::testResolvePreferredAndFallback() {
+    // PATH holds only a stand-in "doas", so the lookup is the real QStandardPaths
+    // one and no real helper on the host can win.
+    QTemporaryDir bin;
+    QVERIFY(bin.isValid());
+    QVERIFY(QFile::link(QStringLiteral(OCTOCRUX_SOURCE_DIR "/tests/scripts/fake_sudo.sh"),
+                        bin.filePath(QStringLiteral("doas"))));
+    const QByteArray savedPath = qgetenv("PATH");
+    auto restore = qScopeGuard([&]() { qputenv("PATH", savedPath); });
+    qputenv("PATH", QFile::encodeName(bin.path()));
+
+    PrivilegeHelper::Resolution r = PrivilegeHelper::resolve(PrivilegeHelperType::Doas);
+    QCOMPARE(r.type, PrivilegeHelperType::Doas);
+    QVERIFY(!r.fellBack);
+
+    // Preferred helper missing: automatic detection, and the caller is told.
+    r = PrivilegeHelper::resolve(PrivilegeHelperType::Sudo);
+    QCOMPARE(r.type, PrivilegeHelperType::Doas);
+    QVERIFY(r.fellBack);
+
+    r = PrivilegeHelper::resolve(std::nullopt);
+    QCOMPARE(r.type, PrivilegeHelperType::Doas);
+    QVERIFY(!r.fellBack);
+
+    qputenv("PATH", QFile::encodeName(QDir(bin.path()).filePath(QStringLiteral("empty"))));
+    r = PrivilegeHelper::resolve(PrivilegeHelperType::QtSudo);
+    QCOMPARE(r.type, PrivilegeHelperType::None);
+    QVERIFY(r.fellBack);
 }
 
 QTEST_MAIN(TestPrivilegeHelper)

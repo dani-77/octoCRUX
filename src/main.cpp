@@ -1,5 +1,4 @@
 #include "backend/crux_adapter.h"
-#include "backend/privilege_helper.h"
 #include "ui/mainwindow.h"
 #include "core/octocrux_settings.h"
 
@@ -24,11 +23,11 @@ int main(int argc, char *argv[]) {
     parser.process(app);
 
     auto backend = std::make_shared<OctoCRUX::CruxAdapter>();
-    const auto helper = OctoCRUX::PrivilegeHelper::probeAvailableHelper();
-    backend->setPrivilegeHelperType(helper);
 
     OctoCRUX::MainWindow window(backend);
     window.setSettings(std::make_shared<OctoCRUX::OctoCruxSettings>());
+    // The helper chosen in Settings, or automatic detection (qt-sudo, sudo, doas, su).
+    window.applyPrivilegePreference();
     window.show();
     window.checkPrivilegeHelper();
     if (parser.isSet(upgradeAll)) {

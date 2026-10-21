@@ -438,6 +438,14 @@ PrivilegeHelperType CruxAdapter::privilegeHelperType() const {
     return m_privilegeHelper.helperType();
 }
 
+void CruxAdapter::setCancelGracePeriodMs(int ms) {
+    m_processRunner->setCancelGracePeriodMs(ms);
+}
+
+int CruxAdapter::cancelGracePeriodMs() const {
+    return m_processRunner->cancelGracePeriodMs();
+}
+
 // --- Mutations & Execution ---
 QList<CruxAdapter::BatchedOperation> CruxAdapter::buildBatchedOperations(const TransactionPlan &plan) const {
     QList<BatchedOperation> ops;

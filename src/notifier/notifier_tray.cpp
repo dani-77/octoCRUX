@@ -16,11 +16,11 @@
 namespace OctoCRUX {
 
 NotifierTray::NotifierTray(NotifierCore *core, std::shared_ptr<OctoCruxSettings> settings,
-                           PrivilegeHelperType helper, QObject *parent)
+                           std::function<PrivilegeHelperType()> currentHelper, QObject *parent)
     : QObject(parent)
     , m_core(core)
     , m_settings(std::move(settings))
-    , m_helper(helper)
+    , m_currentHelper(std::move(currentHelper))
 {
     m_menu = new QMenu();
     m_actStatus = m_menu->addAction(QString());
@@ -35,7 +35,7 @@ NotifierTray::NotifierTray(NotifierCore *core, std::shared_ptr<OctoCruxSettings>
     connect(m_actUpgradeAll, &QAction::triggered, this, &NotifierTray::openUpgradeAll);
     m_actSync = m_menu->addAction(QStringLiteral("Sync ports tree now (ports -u)"));
     m_actSync->setToolTip(QStringLiteral("Runs 'ports -u' through the privilege helper; it may ask for a password."));
-    connect(m_actSync, &QAction::triggered, m_core, &NotifierCore::syncNow);
+    connect(m_actSync, &QAction::triggered, this, &NotifierTray::syncNow);
     QAction *actRefresh = m_menu->addAction(QStringLiteral("Check again"));
     connect(actRefresh, &QAction::triggered, m_core, &NotifierCore::refresh);
     QAction *actOptions = m_menu->addAction(QStringLiteral("Options..."));
@@ -125,8 +125,13 @@ void NotifierTray::onSyncFinished(bool success, const QString &summary) {
     }
 }
 
+void NotifierTray::syncNow() {
+    m_currentHelper();
+    m_core->syncNow();
+}
+
 void NotifierTray::openOptions() {
-    NotifierOptionsDialog dialog(m_settings, m_helper);
+    NotifierOptionsDialog dialog(m_settings, m_currentHelper());
     dialog.exec();
     updateFromCore();
 }

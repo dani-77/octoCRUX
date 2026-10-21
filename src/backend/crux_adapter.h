@@ -64,6 +64,8 @@ public:
     // --- Privilege helper configuration ---
     void setPrivilegeHelperType(PrivilegeHelperType type) override;
     PrivilegeHelperType privilegeHelperType() const override;
+    void setCancelGracePeriodMs(int ms) override;
+    int cancelGracePeriodMs() const override;
 
     // --- Mutations & Execution ---
     QList<QStringList> transactionCommands(const TransactionPlan &plan) const override;

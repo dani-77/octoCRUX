@@ -55,8 +55,19 @@ public:
 
     void checkPrivilegeHelper();
 
-    /** Shared settings; a successful Sync records its time there (read by the notifier). */
+    /**
+     * Shared settings; a successful Sync records its time there (read by the
+     * notifier). Also applies the cancel grace period. The privilege helper is
+     * applied only by applyPrivilegePreference().
+     */
     void setSettings(std::shared_ptr<OctoCruxSettings> settings);
+
+    /**
+     * Sets the backend's privilege helper from the saved preference: the chosen
+     * helper if it is in PATH, otherwise automatic detection (with a warning in
+     * Output). Without settings it uses automatic detection.
+     */
+    void applyPrivilegePreference();
 
     /** Build check exceptions chosen for the next run of a package (empty = defaults). */
     BuildCheckOverrides pendingBuildOverrides(const QString &portName) const;
@@ -97,6 +108,7 @@ private slots:
     void onUpgradeAllClicked();
     void onToggleLockClicked();
     void onCancelOperationClicked();
+    void onSettingsClicked();
     void onBuildChecksChanged();
     void onCustomContextMenuRequested(const QPoint &pos);
 
@@ -116,6 +128,7 @@ private:
     void setupStatusBar();
     void populateCollections();
     void updateStatusBar();
+    void updateBackendLabel();
     void updateActionButtons();
     void loadPortDetails(const PortInfo &port);
     void clearPortDetails();
@@ -167,6 +180,7 @@ private:
     QToolButton *m_btnUpgradeAll = nullptr;
     QToolButton *m_btnLock = nullptr;
     QToolButton *m_btnCancel = nullptr;
+    QToolButton *m_btnSettings = nullptr;
 
     // Main layout
     QSplitter *m_mainSplitter = nullptr;

@@ -630,7 +630,10 @@ Step 3 is also done: "Upgrade All..." in the tray opens OctoCRUX on the preview 
 - GNUInstallDirs install rules, `octocrux.desktop`, an SVG icon, and the polkit action installed by the package;
 - `OCTOCRUX_INSTALL_DOCS` (off in the port), a single `OCTOCRUX_VERSION` from `project()`, and `--help`/`--version` for both binaries;
 - `packaging/crux/octocrux/Pkgfile`, built unprivileged in a sandbox from a local tarball (pkgmk rc 0; the file list matches).
-The owner tags `v0.1.0`, copies the port into d77crux, and generates the footprint and signature. Next: 5b (general settings). 5a (packaging: install rules, `.desktop`, d77crux `Pkgfile`) and 5b (general settings dialog) follow. Owner decisions: once a day is the suggested automatic mode, changeable in the GUI; autostart is opt-in per user.
+The owner tags `v0.1.0`, copies the port into d77crux, and generates the footprint and signature. 5b (general settings) is done: *Settings...* at the end of the toolbar (owner's choice, over a new menu bar). It holds:
+- the preferred privilege helper (Automatic, or qt-sudo/sudo/doas/su, falling back to detection with a warning when the chosen one is not in `PATH`), also followed by the notifier's interactive actions but never by scheduled syncs;
+- the cancel grace period (5–120 s, default 10; closes SESSION_REPORT D5).
+Tested with a fake `sudo` first in `PATH`: the dialog's choice reaches the backend, and Sync runs `sudo ports -u` (a mutation check confirmed the test fails without the apply step). **[owner-reported 2026-10-21]** On the T480s, with sudo chosen in Settings, everything worked; the owner then set it back to Automatic. sudoers there is NOPASSWD, so this did not exercise a sudo password prompt. Owner decisions: once a day is the suggested automatic mode, changeable in the GUI; autostart is opt-in per user.
 
 1. **System Tray Daemon (`octocrux-notifier`):**
    - Lightweight standalone background tray indicator (`QSystemTrayIcon`).

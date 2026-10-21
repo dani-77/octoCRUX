@@ -61,6 +61,8 @@ add_library(octocrux_core STATIC
     src/ui/mainwindow.cpp
     src/ui/transaction_preview_dialog.h
     src/ui/transaction_preview_dialog.cpp
+    src/ui/settings_dialog.h
+    src/ui/settings_dialog.cpp
 )
 
 target_link_libraries(octocrux_core PUBLIC

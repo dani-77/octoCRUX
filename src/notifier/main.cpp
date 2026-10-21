@@ -29,8 +29,17 @@ int main(int argc, char *argv[]) {
     parser.process(app);
 
     auto backend = std::make_shared<CruxAdapter>();
-    backend->setPrivilegeHelperType(PrivilegeHelper::probeAvailableHelper());
     auto settings = std::make_shared<OctoCruxSettings>();
+    // The helper chosen in OctoCRUX Settings (another process may have changed
+    // it, hence the re-read), or automatic detection. Scheduled syncs do not use
+    // it: they go through pkexec or sudo -n only (UnattendedSync).
+    auto currentHelper = [backend, settings]() {
+        settings->sync();
+        const PrivilegeHelperType type = PrivilegeHelper::resolve(settings->preferredHelper()).type;
+        backend->setPrivilegeHelperType(type);
+        return type;
+    };
+    currentHelper();
 
     NotifierCore core(backend, settings);
     // Same test as the OctoXBPS notifier: an interface that is up, not loopback,
@@ -45,7 +54,7 @@ int main(int argc, char *argv[]) {
         }
         return false;
     });
-    NotifierTray tray(&core, settings, backend->privilegeHelperType());
+    NotifierTray tray(&core, settings, currentHelper);
 
     // The tray may appear after the notifier starts (e.g. from autostart): wait
     // for it for up to a minute before giving up, instead of failing at once.

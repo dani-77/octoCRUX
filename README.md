@@ -34,7 +34,7 @@ OctoCRUX provides a clean, responsive desktop interface for CRUX package managem
   - **Footprint:** Expected footprint inspection (`.footprint`).
   - **Readme:** Port documentation (`README`) when declared.
   - **Output:** Live monospaced streaming terminal showing real-time transaction output and compilation logs.
-- **Dynamic Privilege Escalation:** Auto-discovery of desktop elevation tools (`qt-sudo` -> `sudo` -> `doas` -> `su`), with POSIX single-quote shell escaping to prevent injection vulnerabilities.
+- **Dynamic Privilege Escalation:** Auto-discovery of desktop elevation tools (`qt-sudo` -> `sudo` -> `doas` -> `su`), with POSIX single-quote shell escaping to prevent injection vulnerabilities. *Settings...* in the toolbar can pin one helper instead (see "Settings").
 - **Post-Transaction Audit:** Automatic inspection of `/var/lib/pkg/rejected` for non-overwritten configuration files after updates.
 
 ---
@@ -80,6 +80,13 @@ This installs both binaries, their desktop entries, the icon and the polkit acti
 
 ---
 
+## Settings
+
+*Settings...*, at the end of the toolbar, holds the general options. They are stored in `~/.config/OctoCRUX/octoCRUX.conf`, which the notifier shares, and apply at once. The button is disabled while an operation runs.
+
+- **Privilege helper:** *Automatic* (the default) uses the first of `qt-sudo`, `sudo`, `doas`, `su` found in `PATH`. Picking one makes OctoCRUX use it for every privileged operation, and the notifier's "Sync ports tree now" and *Options…* use it too. If the chosen helper is no longer in `PATH`, OctoCRUX uses automatic detection and says so in the Output tab. `sudo`, `doas` and `su` need a terminal to ask for a password, so choosing one shows the same warning as at start. Scheduled syncs ignore this setting: they only use pkexec or `sudo -n`, see below.
+- **Cancel grace period** (5–120 s, default 10): after Cancel, how long OctoCRUX waits before warning that the operation is still running. It never kills the privileged process; pressing Cancel again asks it to stop again.
+
 ## Notifier and automatic sync
 
 `octocrux-notifier` sits in the system tray. It shows how many packages Upgrade All would update (locked ones are counted apart) and how long ago the ports tree was synchronized. Reading needs no privileges: it uses `prt-get printf`. It never installs, upgrades or removes packages. Its "Upgrade All..." entry opens OctoCRUX on the Upgrade All preview (`octocrux --upgrade-all`), and nothing runs until you press Apply there.
@@ -93,7 +100,7 @@ sed -i "s|^Exec=.*|Exec=$HOME/octoCRUX/build/octocrux-notifier|" ~/.config/autos
 ```
 To disable it, remove that file.
 
-**Syncing** (`ports -u`) needs root, because it rewrites `/usr/ports`. "Sync ports tree now" in the tray menu runs it through the privilege helper (qt-sudo), which may ask for a password. Automatic sync is **off** by default; turn it on in *Options…* (once a day is suggested). A scheduled sync never shows a password dialog. It runs only if one of these allows `/usr/bin/ports -u` without a password, and otherwise only reminds you:
+**Syncing** (`ports -u`) needs root, because it rewrites `/usr/ports`. "Sync ports tree now" in the tray menu runs it through the privilege helper (qt-sudo by default, or the one chosen in OctoCRUX *Settings...*), which may ask for a password. Automatic sync is **off** by default; turn it on in *Options…* (once a day is suggested). A scheduled sync never shows a password dialog. It runs only if one of these allows `/usr/bin/ports -u` without a password, and otherwise only reminds you:
 
 1. **polkit (recommended).** *Options…* offers to install a rule that lets **your user only**, in a **local, active session**, run exactly `/usr/bin/ports -u` (action `org.octocrux.ports-sync`).
    polkit only knows a session is local and active if a session tracker registered it. On CRUX with sysvinit that is ConsoleKit2, or elogind. If *Options…* says that polkit "does not see this desktop session as local and active", start your X session through ConsoleKit, for example in `~/.xinitrc`:
@@ -126,7 +133,7 @@ ctest --test-dir build --output-on-failure -LE slow   # routine run: skips suite
 | `test_mainwindow` | Offscreen UI verification of catalog population, dock tabs, search, core protection tooltips, close refusal during operations, the transaction preview gate (Install/Upgrade/Upgrade All/Sync start no process until confirmed; fake `prt-get`/`ports` in `PATH`), Upgrade vs Upgrade All enablement, no stale buttons after a reload, status bar layout, in-place progress lines, per-package build check exceptions (Information tab, flags in the preview and the command, reset after the run), and the "Retry with -in" offer after NEW-only footprint failures. |
 | `test_transaction_planner` | Dependency partitioning, locked outdated package skipping, mount inspection, and fail-closed core protection. |
 | `test_build_log_analyzer` | Authentication failures from real qt-sudo/sudo output (`tests/fixtures/crux3.8/qtsudo-auth/`); footprint failure extraction (NEW-only vs MISSING); log-text classification of real `pkgmk` 5.40.12 failure output (`tests/fixtures/crux3.8/pkgmk-failures/`, generated by `tools/gen_pkgmk_failure_logs.sh`): build, unpack, download, md5sum, signature, footprint, Pkgfile, directory, `ENOSPC`, interruption. Exit code values are never mapped. |
-| `test_privilege_helper` | Discovery priority (`qt-sudo -d`, `sudo`, `doas`, `su`) and POSIX single-quote shell escaping safety. |
+| `test_privilege_helper` | Discovery priority (`qt-sudo -d`, `sudo`, `doas`, `su`), POSIX single-quote shell escaping safety, and resolving the helper chosen in Settings (with fallback to detection when it is not in `PATH`). |
 | `test_crux_process_runner` | Asynchronous line-by-line stdout/stderr streaming, phase parsing, graceful termination, stdin EOF for interactive prompts, and `\r` progress meters (curl) reduced to their visible state. |
 | `test_sync_schedule` | Notifier sync scheduling (Never default, once a day, once a day at H with catch-up, every N minutes with a 60-minute floor, clock moved back) and shared settings round trip. |
 | `test_notifier` | Notifier logic on the real catalog fixture: read-only update summary (unlocked vs locked), notification only when the count grows, manual `ports -u` records the sync time. Scheduled sync with fake `pkcheck`/`pkexec`/`sudo`/`ports`: never by default; pkexec when polkit authorizes; `sudo -n` fallback; reminder only (no retry storm) when neither works; skipped without network or while a package tool runs. Polkit rule text and shipped action definition. |

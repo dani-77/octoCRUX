@@ -1,10 +1,12 @@
 #pragma once
 
 #include "sync_schedule.h"
+#include "octocrux/types.h"
 
 #include <QDateTime>
 #include <QSettings>
 #include <memory>
+#include <optional>
 
 namespace OctoCRUX {
 
@@ -27,6 +29,22 @@ public:
     /** Last successful `ports -u` run by OctoCRUX or its notifier; invalid if none. */
     QDateTime lastSync() const;
     void setLastSync(const QDateTime &when);
+
+    /**
+     * Privilege helper chosen in Settings; nullopt means automatic detection
+     * (the default). Stored as its binary name ("qt-sudo", "sudo", "doas", "su")
+     * or "auto"; an unknown value reads as automatic.
+     */
+    std::optional<PrivilegeHelperType> preferredHelper() const;
+    void setPreferredHelper(std::optional<PrivilegeHelperType> helper);
+
+    /** Seconds Cancel waits before warning that the operation is still running. */
+    static constexpr int kMinCancelGraceSeconds = 5;
+    static constexpr int kMaxCancelGraceSeconds = 120;
+    static constexpr int kDefaultCancelGraceSeconds = 10;
+    /** Clamped to [kMinCancelGraceSeconds, kMaxCancelGraceSeconds]. */
+    int cancelGraceSeconds() const;
+    void setCancelGraceSeconds(int seconds);
 
     void sync();
 

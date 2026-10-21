@@ -3,6 +3,7 @@
 #include "octocrux/types.h"
 #include <QString>
 #include <QStringList>
+#include <optional>
 
 namespace OctoCRUX {
 
@@ -33,6 +34,23 @@ public:
      * @brief Returns the executable binary name for the given helper type.
      */
     static QString helperBinary(PrivilegeHelperType type);
+
+    /**
+     * @brief The helper whose helperBinary() is name, or nullopt for anything else
+     * (including "auto" and an empty name). Used to read the saved preference.
+     */
+    static std::optional<PrivilegeHelperType> fromBinaryName(const QString &name);
+
+    struct Resolution {
+        PrivilegeHelperType type = PrivilegeHelperType::None;
+        bool fellBack = false; ///< a preferred helper was set but is not in PATH
+    };
+
+    /**
+     * @brief The helper to use: the preferred one if its binary is in PATH,
+     * otherwise probeAvailableHelper(). nullopt means automatic detection.
+     */
+    static Resolution resolve(std::optional<PrivilegeHelperType> preferred);
 
     PrivilegeHelperType helperType() const;
     void setHelperType(PrivilegeHelperType type);

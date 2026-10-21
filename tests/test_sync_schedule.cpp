@@ -17,6 +17,7 @@ private slots:
     void testClockMovedBackIsDue();
     void testDaysSinceSync();
     void testSettingsRoundTripAndDefaults();
+    void testGeneralSettingsRoundTripAndInvalidValues();
 
 private:
     static QDateTime at(int day, int hour, int minute = 0) {
@@ -107,6 +108,44 @@ void TestSyncSchedule::testSettingsRoundTripAndDefaults() {
     QCOMPARE(reread.syncSchedule().mode, SyncMode::OnceADayAt);
     QCOMPARE(reread.syncSchedule().hour, 23);
     QCOMPARE(reread.lastSync(), at(21, 7, 17));
+}
+
+void TestSyncSchedule::testGeneralSettingsRoundTripAndInvalidValues() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString file = dir.filePath(QStringLiteral("octoCRUX.conf"));
+    {
+        OctoCruxSettings settings(file);
+        QVERIFY(!settings.preferredHelper().has_value()); // automatic by default
+        QCOMPARE(settings.cancelGraceSeconds(), OctoCruxSettings::kDefaultCancelGraceSeconds);
+        settings.setPreferredHelper(PrivilegeHelperType::Doas);
+        settings.setCancelGraceSeconds(1000); // clamped on save
+        settings.sync();
+    }
+    {
+        OctoCruxSettings reread(file);
+        QCOMPARE(reread.preferredHelper(), std::optional<PrivilegeHelperType>(PrivilegeHelperType::Doas));
+        QCOMPARE(reread.cancelGraceSeconds(), OctoCruxSettings::kMaxCancelGraceSeconds);
+        reread.setPreferredHelper(std::nullopt);
+        reread.sync();
+    }
+    {
+        QSettings raw(file, QSettings::IniFormat);
+        QCOMPARE(raw.value(QStringLiteral("privilege/helper")).toString(), QStringLiteral("auto"));
+        // Hand-edited values: an unknown helper reads as automatic, bad numbers as defaults or limits.
+        raw.setValue(QStringLiteral("privilege/helper"), QStringLiteral("pkexec"));
+        raw.setValue(QStringLiteral("operations/cancelGraceSeconds"), QStringLiteral("soon"));
+    }
+    {
+        OctoCruxSettings reread(file);
+        QVERIFY(!reread.preferredHelper().has_value());
+        QCOMPARE(reread.cancelGraceSeconds(), OctoCruxSettings::kDefaultCancelGraceSeconds);
+    }
+    {
+        QSettings raw(file, QSettings::IniFormat);
+        raw.setValue(QStringLiteral("operations/cancelGraceSeconds"), 0);
+    }
+    QCOMPARE(OctoCruxSettings(file).cancelGraceSeconds(), OctoCruxSettings::kMinCancelGraceSeconds);
 }
 
 QTEST_GUILESS_MAIN(TestSyncSchedule)

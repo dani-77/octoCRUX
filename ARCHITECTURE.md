@@ -214,7 +214,7 @@ signals:
         | user presses Apply  -- Cancel / Esc / close => nothing runs
         v
 [OctoCRUX UI (UID 1000)]
-        | launches QProcess with configured helper & flags:
+        | launches QProcess with the helper from Settings (or auto-detected):
         | e.g. [qt-sudo, <detected_flag>, prt-get, depinst, <pkg>]
         v
 [Privilege Helper (e.g. qt-sudo / sudo / doas)]
@@ -225,6 +225,8 @@ signals:
         v
 [prt-get -> pkgmk -> make -> gcc] (writes to /var/cache/ccache, signs with signify)
 ```
+
+Helper selection (Phase 5b): `OctoCruxSettings::preferredHelper()` stores `auto` or a helper's binary name under `privilege/helper`. `PrivilegeHelper::resolve()` returns the preferred helper if `QStandardPaths::findExecutable` finds it; otherwise it returns `probeAvailableHelper()` with `fellBack` set, which `MainWindow::applyPrivilegePreference()` reports in Output. `setSettings()` deliberately leaves the helper alone: only `main.cpp` and the Settings dialog call `applyPrivilegePreference()`. Tests that attach settings therefore keep their own helper (`None`) and can never fall back to a real `qt-sudo`. The notifier re-reads the preference before "Sync ports tree now" and *Options…*; `UnattendedSync` does not use it.
 
 #### 5.2.1 Transaction Preview (before any elevation)
 - **Upgrade** acts only on the selected package and is enabled only when it is outdated and unlocked. **Upgrade All** is the system-wide upgrade, enabled whenever at least one package is outdated and unlocked, whatever is selected (`MainWindow::hasUpgradablePackages`). Button state is re-evaluated after every catalog reload, because reloading the model clears the selection without emitting `selectionChanged`.
@@ -262,7 +264,7 @@ signals:
   2. **Crucial Verification Requirement [partially verified]:** Testing must verify whether the elevation wrapper (`qt-sudo` -> `sudo`) relays `SIGTERM` cleanly to the child `prt-get`/`pkgmk` process tree across UIDs, or whether killing `qt-sudo` leaves the root compilation running orphaned in the background. Real results (OPEN_QUESTIONS 2.15): Cancel during a download (`pkgmk` -> `curl`) and during a compilation (`configure` -> `gcc`) left no surviving root process. Open: a silent long-running step (SIGPIPE hypothesis), and the leftover pkgmk work directory.
   3. If signal relaying fails in testing, process group line discipline via an embedded pseudo-terminal (PTY) will be employed as the UID-independent cancellation mechanism.
   4. Never execute `killall`.
-  5. **Stalled cancellation feedback:** if the process is still running `CruxProcessRunner::kDefaultCancelGracePeriodMs` (10 s, `setCancelGracePeriodMs()`) after the request, the runner emits a warning **as an ordinary error line on the output stream**, so it appears in red in the Output tab (and briefly in the status bar) like any other stderr line. It also emits `cancellationStalled(pid, elapsedMs)`, which nothing in the UI uses yet (no dialog, no dedicated indicator). It does **not** escalate to `SIGKILL`. The Cancel button stays enabled while the operation runs; pressing it again resends `SIGTERM` and restarts the grace period.
+  5. **Stalled cancellation feedback:** if the process is still running when the grace period after the request ends (default `CruxProcessRunner::kDefaultCancelGracePeriodMs`, 10 s; set in Settings, 5–120 s, through `ICruxBackend::setCancelGracePeriodMs()`), the runner emits a warning **as an ordinary error line on the output stream**, so it appears in red in the Output tab (and briefly in the status bar) like any other stderr line. It also emits `cancellationStalled(pid, elapsedMs)`, which nothing in the UI uses yet (no dialog, no dedicated indicator). It does **not** escalate to `SIGKILL`. The Cancel button stays enabled while the operation runs; pressing it again resends `SIGTERM` and restarts the grace period.
   6. **Window close during an operation:** `~CruxProcessRunner()` sends `SIGTERM`, waits 1 s, then destroys the `QProcess`, whose destructor kills (`SIGKILL`) a child that is still running. To keep that path out of normal use, `MainWindow::closeEvent` **refuses to close** while an operation is in progress and shows a window-modal message explaining why (owner decision, 2026-10-20). The destructor path is still reachable if the process is killed or the session ends forcibly; a logout while an operation runs is also refused by OctoCRUX.
 
 ### 5.4 Post-Transaction Health Checks

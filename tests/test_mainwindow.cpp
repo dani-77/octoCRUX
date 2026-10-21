@@ -22,11 +22,14 @@
 #include <QTabWidget>
 #include <QLineEdit>
 #include <QComboBox>
+#include <QSpinBox>
 #include <QPlainTextEdit>
 #include <QTextBrowser>
 
 #include "ui/mainwindow.h"
 #include "ui/transaction_preview_dialog.h"
+#include "ui/settings_dialog.h"
+#include "backend/crux_process_runner.h"
 #include "core/printf_parser.h"
 
 using namespace OctoCRUX;
@@ -81,6 +84,7 @@ private slots:
     void testFootprintRetryOfferedForNewOnlyFailures();
     void testFootprintMissingIsReportedNotOffered();
     void testCloseRefusedDuringOperation();
+    void testSettingsChangeHelperAndCancelGrace();
 
 private:
     QString readFile(const QString &filePath);
@@ -284,6 +288,89 @@ void TestMainWindow::testCloseRefusedDuringOperation() {
     emit m_adapter->operationFinished(1, OperationErrorKind::GeneralError, QStringLiteral("test-close done"));
     QVERIFY(m_window->close());
     QVERIFY(!m_window->isVisible());
+}
+
+void TestMainWindow::testSettingsChangeHelperAndCancelGrace() {
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    auto restore = qScopeGuard([this]() {
+        removeFakeTools();
+        m_window->setSettings(nullptr);
+        m_adapter->setPrivilegeHelperType(PrivilegeHelperType::None);
+        m_adapter->setCancelGracePeriodMs(CruxProcessRunner::kDefaultCancelGracePeriodMs);
+    });
+    // A stand-in sudo that logs and runs the command unprivileged. The test only
+    // continues if it, not the host's sudo or qt-sudo, is what PATH resolves.
+    const QString fakeSudo = m_fakeBin->filePath(QStringLiteral("sudo"));
+    QVERIFY(QFile::link(m_sourceDir + QStringLiteral("/tests/scripts/fake_sudo.sh"), fakeSudo));
+    QVERIFY2(QStandardPaths::findExecutable(QStringLiteral("sudo")) == fakeSudo,
+             "fake sudo not first in PATH; refusing to click");
+
+    QTemporaryDir dir;
+    auto settings = std::make_shared<OctoCruxSettings>(dir.filePath(QStringLiteral("octoCRUX.conf")));
+    m_window->setSettings(settings);
+    QToolButton *btnSettings = toolButton(QStringLiteral("Settings..."));
+    QVERIFY(btnSettings && btnSettings->isEnabled());
+
+    QString sudoItemText, warningText;
+    onNextModal([&](QWidget *w) {
+        auto *d = qobject_cast<SettingsDialog*>(w);
+        if (!d) {
+            if (auto *other = qobject_cast<QDialog*>(w)) other->reject();
+            return;
+        }
+        auto *combo = d->findChild<QComboBox*>(QStringLiteral("helperCombo"));
+        auto *spin = d->findChild<QSpinBox*>(QStringLiteral("cancelGraceSpin"));
+        if (!combo || !spin) { d->reject(); return; }
+        const int idx = combo->findData(static_cast<int>(PrivilegeHelperType::Sudo));
+        sudoItemText = combo->itemText(idx);
+        combo->setCurrentIndex(idx);
+        spin->setValue(7);
+        // Switching to a TTY helper shows the same warning as at start.
+        onNextModal([&](QWidget *next) {
+            if (auto *box = qobject_cast<QMessageBox*>(next)) warningText = box->text();
+            if (auto *nd = qobject_cast<QDialog*>(next)) nd->accept();
+        });
+        d->accept();
+    });
+    btnSettings->click();
+    QTRY_VERIFY_WITH_TIMEOUT(!warningText.isEmpty(), 5000);
+    QCOMPARE(sudoItemText, QStringLiteral("sudo")); // found in PATH, so not marked
+    QVERIFY(warningText.contains(QStringLiteral("requires a terminal")));
+
+    // Saved, and applied to the backend without a restart.
+    QCOMPARE(settings->preferredHelper(), std::optional<PrivilegeHelperType>(PrivilegeHelperType::Sudo));
+    QCOMPARE(settings->cancelGraceSeconds(), 7);
+    QCOMPARE(m_adapter->privilegeHelperType(), PrivilegeHelperType::Sudo);
+    QCOMPARE(m_adapter->processRunner()->cancelGracePeriodMs(), 7000);
+    bool labelShowsSudo = false;
+    for (QLabel *l : m_window->statusBar()->findChildren<QLabel*>()) {
+        labelShowsSudo |= l->text() == QLatin1String("CRUX 3.8 [sudo (TTY)]");
+    }
+    QVERIFY(labelShowsSudo);
+
+    // The real mechanism: Sync now starts sudo, which runs ports -u.
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+    onNextModal([&](QWidget *w) {
+        if (auto *box = qobject_cast<QMessageBox*>(w)) {
+            for (QAbstractButton *b : box->buttons()) {
+                if (b->text() == QLatin1String("Sync")) b->click();
+            }
+        } else if (auto *d = qobject_cast<QDialog*>(w)) {
+            d->reject();
+        }
+    });
+    toolButton(QStringLiteral("Sync"))->click();
+    QVERIFY(spyFinished.wait(5000));
+    QCOMPARE(probeLines(), (QStringList{QStringLiteral("sudo ports -u"), QStringLiteral("-u")}));
+
+    // The saved helper disappears: automatic detection, with a warning. PATH holds
+    // only the fake directory, so detection cannot pick a real helper.
+    QVERIFY(QFile::remove(fakeSudo));
+    qputenv("PATH", m_fakeBin->path().toLocal8Bit());
+    m_window->applyPrivilegePreference();
+    QCOMPARE(m_adapter->privilegeHelperType(), PrivilegeHelperType::None);
+    QVERIFY(m_window->outputLogEdit()->toPlainText().contains(
+        QStringLiteral("the privilege helper chosen in Settings ('sudo') is not in PATH")));
 }
 
 bool TestMainWindow::installFakeTools() {
