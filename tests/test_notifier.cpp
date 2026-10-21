@@ -9,6 +9,8 @@
 #include "backend/crux_adapter.h"
 #include "core/printf_parser.h"
 #include "notifier/notifier_core.h"
+#include "notifier/unattended_sync.h"
+#include <QCoreApplication>
 
 using namespace OctoCRUX;
 
@@ -50,10 +52,21 @@ private slots:
     void testNewUpdatesAreAnnouncedOnlyWhenTheCountGrows();
     void testSuccessfulSyncRecordsTimeAndRefreshes();
     void testFailedSyncRecordsNothing();
+    void testPolkitRuleAndActionDefinition();
+    void testScheduledSyncNeverByDefault();
+    void testScheduledSyncUsesPolkitWhenAuthorized();
+    void testScheduledSyncFallsBackToSudoN();
+    void testScheduledSyncWithoutPasswordFreeWayOnlyReminds();
+    void testScheduledSyncSkipsWithoutNetworkOrWhenBusy();
 
 private:
     void setPrintf(const QString &text);
     bool installFakePorts(int exitCode);
+    // Fake ports, pkcheck, pkexec and sudo first in PATH; false unless all four
+    // resolve to the fakes (the real sudo/pkexec must never run from a test).
+    bool installFakeElevation(int pkcheckExit, bool sudoNeedsPassword);
+    QStringList probe() const;
+    void setSchedule(SyncMode mode);
 
     QString m_sourceDir;
     QString m_printf;
@@ -83,6 +96,8 @@ void TestNotifier::cleanup() {
     qputenv("PATH", m_savedPath);
     qunsetenv("OCTOCRUX_PROBE_LOG");
     qunsetenv("FAKE_PORTS_EXIT");
+    qunsetenv("FAKE_PKCHECK_EXIT");
+    qunsetenv("FAKE_SUDO_NEEDS_PASSWORD");
 }
 
 void TestNotifier::setPrintf(const QString &text) {
@@ -101,6 +116,36 @@ bool TestNotifier::installFakePorts(int exitCode) {
     qputenv("FAKE_PORTS_EXIT", QByteArray::number(exitCode));
     // Never run the real ports(8) from a test.
     return QStandardPaths::findExecutable(QStringLiteral("ports")) == bin + QStringLiteral("/ports");
+}
+
+bool TestNotifier::installFakeElevation(int pkcheckExit, bool sudoNeedsPassword) {
+    if (!installFakePorts(0)) {
+        return false;
+    }
+    const QString bin = m_tmp->filePath(QStringLiteral("bin"));
+    for (const QString &tool : {QStringLiteral("pkcheck"), QStringLiteral("pkexec"), QStringLiteral("sudo")}) {
+        if (!QFile::link(m_sourceDir + QStringLiteral("/tests/scripts/fake_%1.sh").arg(tool), bin + QLatin1Char('/') + tool)) {
+            return false;
+        }
+        if (QStandardPaths::findExecutable(tool) != bin + QLatin1Char('/') + tool) {
+            return false;
+        }
+    }
+    qputenv("FAKE_PKCHECK_EXIT", QByteArray::number(pkcheckExit));
+    if (sudoNeedsPassword) {
+        qputenv("FAKE_SUDO_NEEDS_PASSWORD", "1");
+    }
+    return true;
+}
+
+QStringList TestNotifier::probe() const {
+    return readFile(m_tmp->filePath(QStringLiteral("probe.log"))).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+}
+
+void TestNotifier::setSchedule(SyncMode mode) {
+    SyncSchedule s;
+    s.mode = mode;
+    m_settings->setSyncSchedule(s);
 }
 
 void TestNotifier::testReadOnlySummaryOfRealFixture() {
@@ -166,6 +211,112 @@ void TestNotifier::testFailedSyncRecordsNothing() {
     QCOMPARE(spyDone.first().at(0).toBool(), false);
     QVERIFY(!m_settings->lastSync().isValid());
     QCOMPARE(core.syncAgeText(), QStringLiteral("Ports tree never synced by OctoCRUX"));
+}
+
+void TestNotifier::testPolkitRuleAndActionDefinition() {
+    const QString rule = UnattendedSync::polkitRuleFor(QStringLiteral("dani77"));
+    QVERIFY(rule.contains(QStringLiteral("action.id == \"org.octocrux.ports-sync\"")));
+    QVERIFY(rule.contains(QStringLiteral("subject.user == \"dani77\" && subject.local && subject.active")));
+    QVERIFY(rule.contains(QStringLiteral("return polkit.Result.YES;")));
+    QCOMPARE(UnattendedSync::ruleFilePath(QStringLiteral("dani77")),
+             QStringLiteral("/etc/polkit-1/rules.d/49-octocrux-ports-sync-dani77.rules"));
+    // Names that could break out of the JavaScript string are refused.
+    for (const QString &bad : {QStringLiteral("x\" || true || \""), QStringLiteral("Root"),
+                               QStringLiteral(""), QStringLiteral("a b"), QStringLiteral("../etc")}) {
+        QVERIFY2(UnattendedSync::polkitRuleFor(bad).isEmpty(), qPrintable(bad));
+    }
+    // The shipped action maps exactly "/usr/bin/ports -u" and needs admin auth by itself.
+    const QString policy = readFile(m_sourceDir + QStringLiteral("/contrib/polkit/org.octocrux.ports-sync.policy"));
+    QVERIFY(policy.contains(QStringLiteral("<action id=\"org.octocrux.ports-sync\">")));
+    QVERIFY(policy.contains(QStringLiteral("<annotate key=\"org.freedesktop.policykit.exec.path\">/usr/bin/ports</annotate>")));
+    QVERIFY(policy.contains(QStringLiteral("<annotate key=\"org.freedesktop.policykit.exec.argv1\">-u</annotate>")));
+    QVERIFY(policy.contains(QStringLiteral("<allow_active>auth_admin</allow_active>")));
+    QVERIFY(policy.contains(QStringLiteral("<allow_any>no</allow_any>")));
+}
+
+void TestNotifier::testScheduledSyncNeverByDefault() {
+    QVERIFY2(installFakeElevation(0, false), "fakes not first in PATH; refusing to tick");
+    NotifierCore core(m_adapter, m_settings);
+    core.tick();
+    QTest::qWait(300);
+    QVERIFY(probe().isEmpty());
+    QVERIFY(!core.isSyncing());
+}
+
+void TestNotifier::testScheduledSyncUsesPolkitWhenAuthorized() {
+    QVERIFY2(installFakeElevation(0, false), "fakes not first in PATH; refusing to tick");
+    setSchedule(SyncMode::OnceADay);
+    NotifierCore core(m_adapter, m_settings);
+    core.setBusyCheck([]() { return false; });
+    QSignalSpy spyDone(&core, &NotifierCore::syncFinished);
+    core.tick();
+    QVERIFY(spyDone.wait(5000));
+    QCOMPARE(spyDone.first().at(0).toBool(), true);
+    const QString ports = m_tmp->filePath(QStringLiteral("bin/ports"));
+    QCOMPARE(probe(), (QStringList{
+        QStringLiteral("pkcheck --action-id org.octocrux.ports-sync --process %1").arg(QCoreApplication::applicationPid()),
+        QStringLiteral("pkexec %1 -u").arg(ports),
+        QStringLiteral("-u")}));
+    QVERIFY(m_settings->lastSync().isValid());
+    QVERIFY(!core.automaticSyncNeedsAuthorization());
+    // Not due again right away.
+    core.tick();
+    QTest::qWait(300);
+    QCOMPARE(probe().size(), 3);
+}
+
+void TestNotifier::testScheduledSyncFallsBackToSudoN() {
+    QVERIFY2(installFakeElevation(2, false), "fakes not first in PATH; refusing to tick");
+    setSchedule(SyncMode::OnceADay);
+    NotifierCore core(m_adapter, m_settings);
+    core.setBusyCheck([]() { return false; });
+    QSignalSpy spyDone(&core, &NotifierCore::syncFinished);
+    core.tick();
+    QVERIFY(spyDone.wait(5000));
+    QCOMPARE(spyDone.first().at(0).toBool(), true);
+    const QStringList lines = probe();
+    QCOMPARE(lines.size(), 3);
+    QVERIFY(lines.at(0).startsWith(QStringLiteral("pkcheck ")));
+    QCOMPARE(lines.at(1), QStringLiteral("sudo -n %1 -u").arg(m_tmp->filePath(QStringLiteral("bin/ports"))));
+    QCOMPARE(lines.at(2), QStringLiteral("-u"));
+    QVERIFY(m_settings->lastSync().isValid());
+}
+
+void TestNotifier::testScheduledSyncWithoutPasswordFreeWayOnlyReminds() {
+    QVERIFY2(installFakeElevation(2, true), "fakes not first in PATH; refusing to tick");
+    setSchedule(SyncMode::OnceADay);
+    NotifierCore core(m_adapter, m_settings);
+    core.setBusyCheck([]() { return false; });
+    QSignalSpy spyDone(&core, &NotifierCore::syncFinished);
+    QSignalSpy spyAuth(&core, &NotifierCore::automaticSyncNeedsAuthorizationChanged);
+    core.tick();
+    QVERIFY(spyDone.wait(5000));
+    QCOMPARE(spyDone.first().at(0).toBool(), false);
+    QVERIFY(!probe().contains(QStringLiteral("-u")));   // ports never ran
+    QVERIFY(!m_settings->lastSync().isValid());
+    QVERIFY(core.automaticSyncNeedsAuthorization());
+    QCOMPARE(spyAuth.count(), 1);
+    QCOMPARE(core.syncAgeText(), QStringLiteral("Automatic sync needs authorization (see Options)"));
+    // The failed attempt postpones the next one: no retry on the next tick.
+    const int before = probe().size();
+    core.tick();
+    QTest::qWait(300);
+    QCOMPARE(probe().size(), before);
+}
+
+void TestNotifier::testScheduledSyncSkipsWithoutNetworkOrWhenBusy() {
+    QVERIFY2(installFakeElevation(0, false), "fakes not first in PATH; refusing to tick");
+    setSchedule(SyncMode::OnceADay);
+    NotifierCore core(m_adapter, m_settings);
+    core.setNetworkCheck([]() { return false; });
+    core.setBusyCheck([]() { return false; });
+    core.tick();
+    core.setNetworkCheck([]() { return true; });
+    core.setBusyCheck([]() { return true; });   // e.g. OctoCRUX is running prt-get
+    core.tick();
+    QTest::qWait(300);
+    QVERIFY(probe().isEmpty());
+    QVERIFY(!core.isSyncing());
 }
 
 QTEST_GUILESS_MAIN(TestNotifier)

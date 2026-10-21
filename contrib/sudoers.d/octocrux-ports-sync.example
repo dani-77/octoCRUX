@@ -1,0 +1,8 @@
+# OctoCRUX: let one user run exactly "/usr/bin/ports -u" as root without a
+# password, so that octocrux-notifier's automatic sync ("sudo -n") works on
+# systems without polkit. Replace USERNAME, then install with visudo:
+#
+#   visudo -f /etc/sudoers.d/octocrux-ports-sync
+#
+# Nothing else is allowed by this line. Remove the file to undo it.
+USERNAME ALL=(root) NOPASSWD: /usr/bin/ports -u

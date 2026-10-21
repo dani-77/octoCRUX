@@ -281,9 +281,13 @@ Adapted from the OctoXBPS notifier (`notifier/mainwindow.cpp`, commit `5f1e8b2`)
   - "Once a day at H" catches up later the same day if the machine was off at H.
   - The minimum interval is 60 minutes.
   The suggested mode when the user enables automatic sync is once a day, changeable in the GUI.
-- **Planned (Phase 5c, step 2):**
-  - Automatic sync runs only non-interactively. The package will install the polkit *action* for exactly `/usr/bin/ports -u`. The rule that waives the password is installed only when the user picks an automatic mode in the notifier options (one authentication), and is removed again when they choose Never. A sudoers.d example covers systems without polkit.
-  - If authentication would be needed at sync time, the notifier never pops up a dialog; it only reminds.
+- **Automatic sync (step 2), only when the user picks a mode in Options:** `NotifierCore::tick()` runs every 5 minutes. When `isSyncDue` says so, the network is up (an interface that is up, not loopback, with an address, as in OctoXBPS) and no `prt-get`/`ports`/`pkgmk`/`pkgadd`/`pkgrm` is running (`/proc/*/comm`), it calls `UnattendedSync`, which never asks for a password:
+  1. `pkcheck --action-id org.octocrux.ports-sync --process <pid>`, which is non-interactive. Exit 0 → `pkexec /usr/bin/ports -u`.
+  2. Otherwise `sudo -n /usr/bin/ports -u`, which fails at once if sudoers wants a password.
+  3. Otherwise nothing runs. The tray says "Automatic sync needs authorization (see Options)" and notifies once.
+  A failed attempt postpones the next one by one schedule period.
+- **Why a dedicated polkit action** (`contrib/polkit/org.octocrux.ports-sync.policy`, with `exec.path=/usr/bin/ports`, `exec.argv1=-u`, `allow_active=auth_admin`): pkexec has no non-interactive mode, so authorization must be checked first. polkit 128 refuses an unprivileged `pkcheck` on pkexec's generic action with details: "Only trusted callers (e.g. uid 0 or an action owner) can use CheckAuthorization() and pass details" **[verified]**. With its own action id, the check works without privileges. That `exec.argv1` maps `pkexec /usr/bin/ports -u` to this action is **[hypothesis until verified on the owner's machine]**; OctoXBPS relies on it.
+- **Opt-in rule:** the Options dialog offers the rule when automatic sync is turned on, and offers to remove it when turned off. The rule is `/etc/polkit-1/rules.d/49-octocrux-ports-sync-<user>.rules` and returns `YES` for that action only, only for that user, and only in a local active session. It is installed through the privilege helper with `install -D -m 0644`, from a temporary file the notifier wrote; until packaging exists, the action definition is installed the same way. User names are validated before being embedded in the rule. On systems without polkit, `contrib/sudoers.d/octocrux-ports-sync.example` grants exactly `/usr/bin/ports -u` to one user.
 - **Planned (step 3):** "Upgrade All…" opens OctoCRUX straight on the preview. An autostart `.desktop` is shipped but not enabled; each user turns it on.
 - It never installs, upgrades or removes packages.
 

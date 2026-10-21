@@ -3,6 +3,7 @@
 #include "backend/crux_adapter.h"
 #include "core/octocrux_settings.h"
 #include "core/update_summary.h"
+#include "unattended_sync.h"
 
 #include <QDateTime>
 #include <QFileSystemWatcher>
@@ -44,24 +45,43 @@ public:
     /** Delay that coalesces bursts of /var/lib/pkg changes into one refresh. */
     static constexpr int kWatchDebounceMs = 2000;
 
-    /** Clock used for sync ages; replaceable in tests. */
+    /** Clock used for sync ages and scheduling; replaceable in tests. */
     void setClock(std::function<QDateTime()> clock) { m_clock = std::move(clock); }
+    /** "Is there a network?" for scheduled syncs (default: always). */
+    void setNetworkCheck(std::function<bool()> check) { m_networkUp = std::move(check); }
+    /** "Is a package tool running?" for scheduled syncs (default: scan /proc). */
+    void setBusyCheck(std::function<bool()> check) { m_toolBusy = std::move(check); }
+
+    /** The last scheduled sync could not run without a password. */
+    bool automaticSyncNeedsAuthorization() const { return m_autoNeedsAuth; }
+
+    /** True if prt-get, ports, pkgmk, pkgadd or pkgrm is running (from /proc). */
+    static bool isPackageToolRunning();
 
 public slots:
     /** Re-reads the catalog and updates the summary. Never elevates. */
     void refresh();
     /** Runs `ports -u` through the privilege helper. Returns false if it did not start. */
     bool syncNow();
+    /**
+     * Periodic tick: refresh, then, if the schedule says a sync is due, the
+     * network is up and no package tool is running, start an unattended sync.
+     * A failed attempt postpones the next one by one schedule period.
+     */
+    void tick();
 
 signals:
     void stateChanged();
     /** The number of upgradable packages grew: the tray shows a notification. */
     void newUpdatesFound(int upgradable);
     void syncFinished(bool success, const QString &summary);
+    /** A scheduled sync found no password-free way to run (emitted once per streak). */
+    void automaticSyncNeedsAuthorizationChanged(bool needed);
 
 private slots:
     void onOperationFinished(int exitCode, OperationErrorKind kind, const QString &summary);
     void onPkgDbChanged();
+    void onUnattendedFinished(UnattendedSync::Result result, UnattendedSync::Method method, const QString &summary);
 
 private:
     void watchPkgDb();
@@ -72,6 +92,11 @@ private:
     UpdateSummary m_summary;
     bool m_hasSummary = false;
     bool m_syncing = false;
+    bool m_autoNeedsAuth = false;
+    QDateTime m_lastAttempt;            // last scheduled attempt (success or not), this session
+    std::function<bool()> m_networkUp;
+    std::function<bool()> m_toolBusy;
+    UnattendedSync m_unattended;
     QTimer m_refreshTimer;
     QTimer m_debounce;
     QFileSystemWatcher m_watcher;

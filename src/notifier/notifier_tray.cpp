@@ -1,4 +1,5 @@
 #include "notifier_tray.h"
+#include "notifier_options_dialog.h"
 
 #include <QAction>
 #include <QApplication>
@@ -14,9 +15,12 @@
 
 namespace OctoCRUX {
 
-NotifierTray::NotifierTray(NotifierCore *core, QObject *parent)
+NotifierTray::NotifierTray(NotifierCore *core, std::shared_ptr<OctoCruxSettings> settings,
+                           PrivilegeHelperType helper, QObject *parent)
     : QObject(parent)
     , m_core(core)
+    , m_settings(std::move(settings))
+    , m_helper(helper)
 {
     m_menu = new QMenu();
     m_actStatus = m_menu->addAction(QString());
@@ -31,6 +35,8 @@ NotifierTray::NotifierTray(NotifierCore *core, QObject *parent)
     connect(m_actSync, &QAction::triggered, m_core, &NotifierCore::syncNow);
     QAction *actRefresh = m_menu->addAction(QStringLiteral("Check again"));
     connect(actRefresh, &QAction::triggered, m_core, &NotifierCore::refresh);
+    QAction *actOptions = m_menu->addAction(QStringLiteral("Options..."));
+    connect(actOptions, &QAction::triggered, this, &NotifierTray::openOptions);
     m_menu->addSeparator();
     QAction *actQuit = m_menu->addAction(QStringLiteral("Quit notifier"));
     connect(actQuit, &QAction::triggered, qApp, &QCoreApplication::quit);
@@ -46,6 +52,8 @@ NotifierTray::NotifierTray(NotifierCore *core, QObject *parent)
     connect(m_core, &NotifierCore::stateChanged, this, &NotifierTray::updateFromCore);
     connect(m_core, &NotifierCore::newUpdatesFound, this, &NotifierTray::onNewUpdates);
     connect(m_core, &NotifierCore::syncFinished, this, &NotifierTray::onSyncFinished);
+    connect(m_core, &NotifierCore::automaticSyncNeedsAuthorizationChanged,
+            this, &NotifierTray::onAutomaticSyncNeedsAuthorization);
     updateFromCore();
 }
 
@@ -110,6 +118,21 @@ void NotifierTray::onSyncFinished(bool success, const QString &summary) {
                             success ? QStringLiteral("Ports tree synchronized")
                                     : QStringLiteral("Ports tree sync failed: %1").arg(summary),
                             success ? QSystemTrayIcon::Information : QSystemTrayIcon::Warning, 10000);
+    }
+}
+
+void NotifierTray::openOptions() {
+    NotifierOptionsDialog dialog(m_settings, m_helper);
+    dialog.exec();
+    updateFromCore();
+}
+
+void NotifierTray::onAutomaticSyncNeedsAuthorization(bool needed) {
+    if (needed && QSystemTrayIcon::supportsMessages()) {
+        m_tray->showMessage(QStringLiteral("OctoCRUX"),
+            QStringLiteral("Automatic ports tree sync could not run without a password. "
+                           "Use \"Sync ports tree now\", or allow unattended sync in Options."),
+            QSystemTrayIcon::Warning, 15000);
     }
 }
 

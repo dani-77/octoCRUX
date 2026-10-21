@@ -18,7 +18,8 @@ namespace OctoCRUX {
 class NotifierTray : public QObject {
     Q_OBJECT
 public:
-    explicit NotifierTray(NotifierCore *core, QObject *parent = nullptr);
+    NotifierTray(NotifierCore *core, std::shared_ptr<OctoCruxSettings> settings,
+                 PrivilegeHelperType helper, QObject *parent = nullptr);
     ~NotifierTray() override;
 
     void show();
@@ -31,9 +32,13 @@ private slots:
     void onNewUpdates(int upgradable);
     void onSyncFinished(bool success, const QString &summary);
     void openOctoCrux();
+    void openOptions();
+    void onAutomaticSyncNeedsAuthorization(bool needed);
 
 private:
     NotifierCore *m_core;
+    std::shared_ptr<OctoCruxSettings> m_settings;
+    PrivilegeHelperType m_helper;
     QSystemTrayIcon *m_tray = nullptr;
     QMenu *m_menu = nullptr;
     QAction *m_actStatus = nullptr;

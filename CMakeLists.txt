@@ -41,6 +41,8 @@ add_library(octocrux_core STATIC
     src/core/octocrux_settings.cpp
     src/notifier/notifier_core.h
     src/notifier/notifier_core.cpp
+    src/notifier/unattended_sync.h
+    src/notifier/unattended_sync.cpp
     src/backend/command_runner.h
     src/backend/command_runner.cpp
     src/backend/privilege_helper.h
@@ -86,11 +88,21 @@ add_executable(octocrux-notifier
     src/notifier/main.cpp
     src/notifier/notifier_tray.h
     src/notifier/notifier_tray.cpp
+    src/notifier/notifier_options_dialog.h
+    src/notifier/notifier_options_dialog.cpp
 )
 
+find_package(Qt6 REQUIRED COMPONENTS Network)
 target_link_libraries(octocrux-notifier PRIVATE
     octocrux_core
     Qt6::Widgets
+    Qt6::Network
+)
+
+# Until packaging (Phase 5a) installs it, the options dialog takes the polkit
+# action definition from the source tree.
+target_compile_definitions(octocrux-notifier PRIVATE
+    OCTOCRUX_SOURCE_POLICY="${CMAKE_SOURCE_DIR}/contrib/polkit/org.octocrux.ports-sync.policy"
 )
 
 # Testing

@@ -623,7 +623,10 @@ Details in OPEN_QUESTIONS 2.15:
 - 2026-10-21: criu upgraded with a `-in` exception (first real exception, verified from the Output); qt-sudo's prompt was suppressed by a later `NOPASSWD` sudoers rule (owner experiment); cancelled and wrong-password authentication paths recorded and turned into a fixture; cancelled authentication now reports `AuthenticationError`; the rejected-config alert lists only new files.
 
 ### 7.7 Phase 5 — System Tray Notifier (`octocrux-notifier`) & Settings
-*Status 2026-10-21:* Phase 5c step 1 is done: a read-only tray notifier, manual `ports -u`, and shared settings with the sync time (ARCHITECTURE §5.5). Step 2 (automatic sync with a password-free polkit rule installed only on opt-in) and step 3 (Upgrade All from the tray, autostart file) are next. 5a (packaging: install rules, `.desktop`, d77crux `Pkgfile`) and 5b (general settings dialog) follow. Owner decisions: once a day is the suggested automatic mode, changeable in the GUI; autostart is opt-in per user.
+*Status 2026-10-21:* Phase 5c steps 1 and 2 are done (ARCHITECTURE §5.5):
+- step 1: a read-only tray notifier, manual `ports -u`, and shared settings with the sync time (the owner confirmed the icon and tooltip);
+- step 2: automatic sync through pkexec (opt-in polkit rule) or `sudo -n`, never asking for a password unattended, plus the Options dialog.
+Step 3 (Upgrade All from the tray, autostart file) is next. 5a (packaging: install rules, `.desktop`, d77crux `Pkgfile`) and 5b (general settings dialog) follow. Owner decisions: once a day is the suggested automatic mode, changeable in the GUI; autostart is opt-in per user.
 
 1. **System Tray Daemon (`octocrux-notifier`):**
    - Lightweight standalone background tray indicator (`QSystemTrayIcon`).

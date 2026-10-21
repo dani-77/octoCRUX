@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!--
+  OctoCRUX: synchronize the CRUX ports tree with exactly "/usr/bin/ports -u".
+
+  This file only defines the action. By itself it grants nothing: running it
+  needs administrator authentication (auth_admin). OctoCRUX's notifier
+  installs a separate rule in /etc/polkit-1/rules.d only when a user turns on
+  automatic sync, and only for that user.
+
+  pkexec maps "pkexec /usr/bin/ports -u" to this action through the
+  exec.path and exec.argv1 annotations (the same approach as the OctoXBPS
+  notifier's xbps-install -Sy policy).
+-->
+<policyconfig>
+  <vendor>OctoCRUX</vendor>
+  <action id="org.octocrux.ports-sync">
+    <description>Synchronize the CRUX ports tree (ports -u)</description>
+    <message>Authentication is required to synchronize the ports tree</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/ports</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">-u</annotate>
+  </action>
+</policyconfig>

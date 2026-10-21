@@ -251,6 +251,11 @@ In accordance with [RESEARCH.md](RESEARCH.md) and the SCOFS protocol in [AGENTS.
   5. **[hypothesis]** The root processes died of SIGPIPE when they next wrote to a pipe that had closed after qt-sudo, sudo and prt-get exited, not from the relayed signal. pkgmk does not trap SIGPIPE. **[open]** If so, a long step that writes nothing (a big link, a quiet compiler run) could keep running as root until it writes again. Testing that needs a Cancel during such a silent step.
 * **Output colour leak [verified, fixed]:** the owner found the trigger: clicking inside a coloured line, e.g. the orange alert. `QPlainTextEdit::appendPlainText` uses the character format at the widget's text cursor, so every later line came out orange and bold. An offscreen replay of the signals alone could not show it; placing the text cursor inside the alert reproduces it in `testClickInColouredLineDoesNotColourNewLines`. All Output writes now reset the format first.
 
+### 2.16 polkit for the Notifier's Unattended Sync
+* **[verified, 2026-10-21, polkit 128]** pkexec passes `program` and `command_line` details (found in `/usr/bin/pkexec`'s strings), but an unprivileged `pkcheck -a org.freedesktop.policykit.exec -d program ... -d command_line ...` is refused: "Only trusted callers (e.g. uid 0 or an action owner) can use CheckAuthorization() and pass details". A desktop process therefore cannot check in advance whether `pkexec /usr/bin/ports -u` would prompt, if a rule keys on pkexec's generic action. OctoCRUX uses its own action `org.octocrux.ports-sync` instead (ARCHITECTURE 5.5).
+* **[open]** That polkit 128 maps `pkexec /usr/bin/ports -u` to that action through the `exec.path` and `exec.argv1` annotations. To check: after turning on automatic sync and installing the rule, `pkcheck -a org.octocrux.ports-sync -p $$` exits 0, and a scheduled sync runs via pkexec without a prompt.
+* **Note:** on the T480s the `(ALL) NOPASSWD: ALL` sudoers rule already makes the `sudo -n` fallback work without any polkit rule.
+
 ## 3. Exit Codes & Command Quirks Reference for Parsers
 
 | Command | Expected rc on Success | Behavior on Missing / Error | Output Quirk for Parsers |

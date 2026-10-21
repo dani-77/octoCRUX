@@ -1,7 +1,10 @@
 #include "notifier_core.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QSet>
+#include <QStandardPaths>
 
 namespace OctoCRUX {
 
@@ -12,12 +15,15 @@ NotifierCore::NotifierCore(std::shared_ptr<CruxAdapter> backend,
     , m_backend(std::move(backend))
     , m_settings(std::move(settings))
     , m_clock([]() { return QDateTime::currentDateTime(); })
+    , m_networkUp([]() { return true; })
+    , m_toolBusy([]() { return NotifierCore::isPackageToolRunning(); })
 {
+    connect(&m_unattended, &UnattendedSync::finished, this, &NotifierCore::onUnattendedFinished);
     connect(m_backend.get(), &ICruxBackend::operationFinished,
             this, &NotifierCore::onOperationFinished);
 
     m_refreshTimer.setInterval(kRefreshIntervalMs);
-    connect(&m_refreshTimer, &QTimer::timeout, this, &NotifierCore::refresh);
+    connect(&m_refreshTimer, &QTimer::timeout, this, &NotifierCore::tick);
     m_refreshTimer.start();
 
     m_debounce.setSingleShot(true);
@@ -64,6 +70,66 @@ void NotifierCore::refresh() {
     }
 }
 
+bool NotifierCore::isPackageToolRunning() {
+    static const QSet<QString> tools = {QStringLiteral("prt-get"), QStringLiteral("ports"),
+                                        QStringLiteral("pkgmk"), QStringLiteral("pkgadd"),
+                                        QStringLiteral("pkgrm")};
+    const QStringList pids = QDir(QStringLiteral("/proc")).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QString &pid : pids) {
+        if (pid.isEmpty() || !pid.at(0).isDigit()) {
+            continue;
+        }
+        QFile comm(QStringLiteral("/proc/%1/comm").arg(pid));
+        if (comm.open(QIODevice::ReadOnly)
+            && tools.contains(QString::fromUtf8(comm.readAll()).trimmed())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void NotifierCore::tick() {
+    refresh();
+    if (m_syncing) {
+        return;
+    }
+    const SyncSchedule schedule = m_settings->syncSchedule();
+    const QDateTime now = m_clock();
+    QDateTime base = lastSync();
+    if (m_lastAttempt.isValid() && (!base.isValid() || m_lastAttempt > base)) {
+        base = m_lastAttempt;
+    }
+    if (!isSyncDue(schedule, base, now) || !m_networkUp() || m_toolBusy()) {
+        return;
+    }
+    const QString ports = QStandardPaths::findExecutable(m_backend->portsBinary());
+    if (ports.isEmpty()) {
+        return;
+    }
+    m_lastAttempt = now;
+    m_syncing = true;
+    emit stateChanged();
+    m_unattended.start(ports);
+}
+
+void NotifierCore::onUnattendedFinished(UnattendedSync::Result result, UnattendedSync::Method method,
+                                        const QString &summary) {
+    Q_UNUSED(method);
+    m_syncing = false;
+    const bool ok = result == UnattendedSync::Result::Synced;
+    if (ok) {
+        m_settings->setLastSync(m_clock());
+        m_settings->sync();
+    }
+    const bool needsAuth = result == UnattendedSync::Result::NeedsAuthentication;
+    if (needsAuth != m_autoNeedsAuth) {
+        m_autoNeedsAuth = needsAuth;
+        emit automaticSyncNeedsAuthorizationChanged(needsAuth);
+    }
+    emit syncFinished(ok, summary);
+    refresh();
+}
+
 QString NotifierCore::statusText() const {
     if (m_syncing) {
         return QStringLiteral("Synchronizing ports tree...");
@@ -82,6 +148,9 @@ QString NotifierCore::statusText() const {
 }
 
 QString NotifierCore::syncAgeText() const {
+    if (m_autoNeedsAuth && m_settings->syncSchedule().mode != SyncMode::Never) {
+        return QStringLiteral("Automatic sync needs authorization (see Options)");
+    }
     const int days = daysSinceSync(lastSync(), m_clock());
     if (days < 0) {
         return QStringLiteral("Ports tree never synced by OctoCRUX");

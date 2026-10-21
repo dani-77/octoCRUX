@@ -5,6 +5,7 @@
 #include "notifier_tray.h"
 
 #include <QApplication>
+#include <QNetworkInterface>
 #include <QSystemTrayIcon>
 #include <QTextStream>
 #include <QTimer>
@@ -23,7 +24,19 @@ int main(int argc, char *argv[]) {
     auto settings = std::make_shared<OctoCruxSettings>();
 
     NotifierCore core(backend, settings);
-    NotifierTray tray(&core);
+    // Same test as the OctoXBPS notifier: an interface that is up, not loopback,
+    // and has an address. It does not prove the mirrors are reachable.
+    core.setNetworkCheck([]() {
+        for (const QNetworkInterface &iface : QNetworkInterface::allInterfaces()) {
+            const auto flags = iface.flags();
+            if (flags.testFlag(QNetworkInterface::IsUp) && !flags.testFlag(QNetworkInterface::IsLoopBack)
+                && !iface.addressEntries().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    });
+    NotifierTray tray(&core, settings, backend->privilegeHelperType());
 
     // The tray may appear after the notifier starts (e.g. from autostart): wait
     // for it for up to a minute before giving up, instead of failing at once.
@@ -34,7 +47,7 @@ int main(int argc, char *argv[]) {
         if (QSystemTrayIcon::isSystemTrayAvailable()) {
             waitForTray.stop();
             tray.show();
-            core.refresh();
+            core.tick();
         } else if (++attempts >= 30) {
             QTextStream(stderr) << "octocrux-notifier: no system tray available, exiting\n";
             app.exit(1);
@@ -42,7 +55,7 @@ int main(int argc, char *argv[]) {
     });
     if (QSystemTrayIcon::isSystemTrayAvailable()) {
         tray.show();
-        QTimer::singleShot(1000, &core, &NotifierCore::refresh); // first check soon after start
+        QTimer::singleShot(1000, &core, &NotifierCore::tick); // first check soon after start
     } else {
         waitForTray.start();
     }
