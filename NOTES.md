@@ -123,6 +123,7 @@ Following the diagnostic runs, a thorough peer-review exchange between Daniel, C
    - *Resolution:* Cancellation remains an open hypothesis pending disposable container testing (Test 2.10.3). Pseudo-terminal (PTY) wrapper retained as the primary architectural safeguard.
 3. **Authentication & `NOPASSWD: ALL` in Sudoers:**
    - *Observation & Clarification [owner-reported]:* While `sudo -n -l` indicated `(ALL) NOPASSWD: ALL`, the project owner explicitly reported that `sudo` prompts for a password in both the terminal and `qt-sudo` on this machine. `sudo -l` output does not reliably predict runtime authentication requirements, meaning authentication dialog tests and credential handling are valid and strictly necessary on this machine. (Previous speculations regarding graphical PAM configuration are retracted).
+   - *Correction (2026-10-21) [owner-reported]:* the password prompt described above was seen on another of the owner's systems (most likely devXd77, Devuan), not on the T480s. On the T480s the `(ALL) NOPASSWD: ALL` rule is the last match, so sudo and qt-sudo do not ask for a password (OPEN_QUESTIONS 2.15). Testing the qt-sudo password dialog there requires commenting out that rule.
 4. **PrivilegeHelper Dynamic Flags:**
    - *Resolution:* Eliminated hardcoded `-d` flag. `PrivilegeHelper` dynamically discovers backend capabilities (`qt-sudo`, `sudo`, `doas`, `su`) or reads user preferences.
 5. **Digital Signature Failures (`signify`):**

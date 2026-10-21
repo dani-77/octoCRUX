@@ -229,7 +229,7 @@ In accordance with [RESEARCH.md](RESEARCH.md) and the SCOFS protocol in [AGENTS.
 * **Why qt-sudo did not ask for a password [verified by owner experiment]:**
   1. `sudo -l` lists `(ALL : ALL) ALL` and, after it, `(ALL) NOPASSWD: ALL`. sudoers applies the last matching entry, so NOPASSWD won and sudo never asked; qt-sudo had no prompt to show.
   2. With the NOPASSWD line commented out, qt-sudo's password dialog appeared at once, one per elevated invocation (Lock/Unlock of criu) [owner-reported].
-  3. **[open]** The owner reports that sudo in a terminal asked for a password even while NOPASSWD was active. This was not reproduced. A rule in `/etc/sudoers.d` (unreadable to the desktop user) is a possible explanation.
+  3. **[resolved, owner-reported 2026-10-21]** The earlier report that sudo "always asks for a password" in a terminal did not come from this machine. It was a mix-up with another of the owner's systems, most likely devXd77 (Devuan, configured by hand). On sysvd77/T480s, sudo does not ask for a password while the NOPASSWD rule is active.
   4. **Consequence (unchanged):** the OctoCRUX preview dialog is the only gate that is guaranteed; the helper's prompt depends on the local sudoers.
 * **qt-sudo authentication paths [verified]** (fixture `tests/fixtures/crux3.8/qtsudo-auth/`, the owner's Output tab):
   1. Password dialog **cancelled**: qt-sudo shows its own error window ("Falha no processo dependente sudo! sudo: a password is required") and exits 1 when it is closed. Until then OctoCRUX correctly stays busy, because the child is alive. Nothing changed (criu not locked).
