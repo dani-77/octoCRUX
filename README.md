@@ -144,3 +144,9 @@ ctest --test-dir build --output-on-failure -LE slow   # routine run: skips suite
 ## Governance & Collaboration
 
 Development is governed by the working agreement in [`AGENTS.md`](AGENTS.md). All architectural decisions, empirical findings, and session logs are recorded chronologically in [`NOTES.md`](NOTES.md).
+
+## License
+
+OctoCRUX is free software, released under the GNU General Public License, version 2 (GPL-2.0-only). The full text is in [`LICENSE`](LICENSE). Copyright © 2026 Daniel Azevedo.
+
+Parts of the design follow Octopi and OctoXBPS by Alexandre Albuquerque Arnt (GPL-2.0), and YAPO by Juergen Daubert (GPL-2.0-or-later); see `RESEARCH_FINDINGS.md` §7.

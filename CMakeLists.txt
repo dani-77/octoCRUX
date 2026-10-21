@@ -151,9 +151,9 @@ install(FILES contrib/polkit/org.octocrux.ports-sync.policy
 )
 
 # CRUX packages carry no documentation; the port turns this off.
-option(OCTOCRUX_INSTALL_DOCS "Install README and the sudoers example under the doc directory" ON)
+option(OCTOCRUX_INSTALL_DOCS "Install README, LICENSE and the sudoers example under the doc directory" ON)
 if(OCTOCRUX_INSTALL_DOCS)
-    install(FILES README.md contrib/sudoers.d/octocrux-ports-sync.example
+    install(FILES README.md LICENSE contrib/sudoers.d/octocrux-ports-sync.example
         DESTINATION ${CMAKE_INSTALL_DOCDIR}
     )
 endif()
