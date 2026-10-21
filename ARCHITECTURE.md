@@ -201,6 +201,8 @@ signals:
    - If `ENOSPC` occurs, it is captured and categorized explicitly as `OperationErrorKind::DiskSpaceError`.
    - If the local `pkgmk.conf` provides a fallback mechanism (such as `PKGMK_WORK_ROOT`), it can be offered dynamically.
 
+4. **Waiting for the user (helper prompts):** the runner shows a line only when its `\n` arrives, and sudo prints the `\n` after `Password: ` only once the password was answered. `CruxProcessRunner` therefore also checks the unterminated buffer: a password prompt (`isPasswordPrompt`: sudo/su `Password: `, `[sudo] password for <user>: `, doas `doas (<user>@<host>) password: `) is announced at once. Output gets `[octoCRUX] The privilege helper is asking for a password.`, the status bar shows "Waiting for authentication...", and sudo's raw prompt line is kept in the captured log for the analyzer but not repeated on screen. `Sorry, try again.` is followed by `[octoCRUX] Wrong password; the helper asks again.` If an elevated run prints nothing for its first 3 s (`kDefaultSilenceHintMs`), the status bar shows "Waiting for <helper>... (a password dialog or message may be open)". That covers qt-sudo's own dialog and its error window. Each hint ends with the next output line (`ICruxBackend::waitingChanged`). Whether qt-sudo passes `Password: ` to OctoCRUX while its dialog is open, and not only afterwards, is **[hypothesis]**; the silence hint covers both cases.
+
 ### 5.2 Privilege Escalation Flow
 ```
 [User clicks Install / Upgrade / Upgrade All / Remove]

@@ -28,6 +28,19 @@ CruxAdapter::CruxAdapter(std::shared_ptr<ICommandRunner> runner, QObject *parent
             });
     connect(m_processRunner.get(), &CruxProcessRunner::processFinished,
             this, &CruxAdapter::onProcessRunnerFinished);
+    connect(m_processRunner.get(), &CruxProcessRunner::authenticationRequested, this, [this]() {
+        emit waitingChanged(QStringLiteral("Waiting for authentication..."));
+    });
+    connect(m_processRunner.get(), &CruxProcessRunner::waitingForProcess, this, [this]() {
+        // Only an elevated run can be held up by a dialog of its own.
+        const QString helper = PrivilegeHelper::helperBinary(m_privilegeHelper.helperType());
+        if (!helper.isEmpty()) {
+            emit waitingChanged(QStringLiteral("Waiting for %1... (a password dialog or message may be open)").arg(helper));
+        }
+    });
+    connect(m_processRunner.get(), &CruxProcessRunner::waitingEnded, this, [this]() {
+        emit waitingChanged(QString());
+    });
 }
 
 void CruxAdapter::setRootPrefix(const QString &prefix) {

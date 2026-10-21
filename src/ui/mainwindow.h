@@ -97,6 +97,7 @@ private slots:
     void onBackendOutputReceived(const QString &text, bool isError);
     void onBackendTransientOutput(const QString &text);
     void onProgressChanged(int current, int total, const QString &phase);
+    void onWaitingChanged(const QString &reason);
     void onOperationFinished(int exitCode, OperationErrorKind errorKind, const QString &summary);
     void onRejectedConfigsDetected(const QStringList &rejectedFiles);
 
@@ -210,6 +211,7 @@ private:
     QLabel *m_backendLabel = nullptr;
 
     bool m_operationInProgress = false;
+    QString m_currentPhase;             // shown again when a waiting hint ends
     // The last Output line is a '\r' progress line, to be replaced in place.
     bool m_lastOutputLineTransient = false;
     QPointer<QMessageBox> m_closeRefusedMessage;

@@ -18,7 +18,22 @@ private slots:
     void testCancelStalledWarnsWithoutKill();
     void testCarriageReturnProgressIsTransient();
     void testCancelledAuthenticationIsReported();
+    void testPasswordPromptRecognition();
+    void testPasswordPromptAnnouncedBeforeItsLineEnds();
+    void testWrongPasswordHint();
+    void testSilentStartHint();
+    void testTooManyPasswordAttemptsIsAuthenticationError();
 };
+
+namespace {
+QStringList shownLines(const QSignalSpy &spy) {
+    QStringList lines;
+    for (const QList<QVariant> &args : spy) {
+        lines << args.at(0).toString();
+    }
+    return lines;
+}
+} // namespace
 
 void TestCruxProcessRunner::testSuccessfulExecution() {
     CruxProcessRunner runner;
@@ -231,6 +246,96 @@ void TestCruxProcessRunner::testCancelledAuthenticationIsReported() {
     QVERIFY(spyFinished.wait(5000));
     const QList<QVariant> args = spyFinished.takeFirst();
     QCOMPARE(args.at(0).toInt(), 1);
+    QCOMPARE(args.at(1).value<OperationErrorKind>(), OperationErrorKind::AuthenticationError);
+    QVERIFY(args.at(2).toString().contains(QStringLiteral("nothing was run as root")));
+}
+
+void TestCruxProcessRunner::testPasswordPromptRecognition() {
+    QVERIFY(CruxProcessRunner::isPasswordPrompt(QStringLiteral("Password: ")));   // sudo/su, fixture qtsudo-auth
+    QVERIFY(CruxProcessRunner::isPasswordPrompt(QStringLiteral("Password:")));
+    QVERIFY(CruxProcessRunner::isPasswordPrompt(QStringLiteral("[sudo] password for daniel: ")));
+    QVERIFY(CruxProcessRunner::isPasswordPrompt(QStringLiteral("doas (daniel@t480s) password: ")));
+    QVERIFY(!CruxProcessRunner::isPasswordPrompt(QStringLiteral("Password: secret")));
+    QVERIFY(!CruxProcessRunner::isPasswordPrompt(QStringLiteral("Enter the database Password:")));
+    QVERIFY(!CruxProcessRunner::isPasswordPrompt(QStringLiteral("Sorry, try again.")));
+    QVERIFY(!CruxProcessRunner::isPasswordPrompt(QString()));
+}
+
+void TestCruxProcessRunner::testPasswordPromptAnnouncedBeforeItsLineEnds() {
+    // Like sudo: the prompt has no '\n' until the password is answered, here 3 s later.
+    CruxProcessRunner runner;
+    QSignalSpy spyAuth(&runner, &CruxProcessRunner::authenticationRequested);
+    QSignalSpy spyEnded(&runner, &CruxProcessRunner::waitingEnded);
+    QSignalSpy spyOutput(&runner, &CruxProcessRunner::outputReceived);
+    QSignalSpy spyFinished(&runner, &CruxProcessRunner::processFinished);
+    QVERIFY(runner.startProcess(QStringLiteral("sh"), {QStringLiteral("-c"),
+        QStringLiteral("printf 'Password: ' >&2; sleep 3; printf '\\n' >&2; echo done >&2")}));
+
+    QVERIFY(spyAuth.wait(2000));
+    QVERIFY2(runner.isRunning(), "the prompt must be announced while it is still unanswered");
+    QCOMPARE(spyEnded.count(), 0);
+    QCOMPARE(shownLines(spyOutput), QStringList{QStringLiteral("[octoCRUX] The privilege helper is asking for a password.")});
+
+    QVERIFY(spyFinished.wait(5000));
+    QCOMPARE(spyAuth.count(), 1);   // the line ending does not announce it again
+    QCOMPARE(spyEnded.count(), 1);  // "done" ended the wait
+    QCOMPARE(shownLines(spyOutput), (QStringList{
+        QStringLiteral("[octoCRUX] The privilege helper is asking for a password."), QStringLiteral("done")}));
+    // The analyzer still sees sudo's own line.
+    QVERIFY2(runner.capturedLog().startsWith(QStringLiteral("Password: \n")), qPrintable(runner.capturedLog()));
+}
+
+void TestCruxProcessRunner::testWrongPasswordHint() {
+    // The sequence of tests/fixtures/crux3.8/qtsudo-auth (two wrong passwords, then the right one).
+    CruxProcessRunner runner;
+    QSignalSpy spyAuth(&runner, &CruxProcessRunner::authenticationRequested);
+    QSignalSpy spyOutput(&runner, &CruxProcessRunner::outputReceived);
+    QSignalSpy spyFinished(&runner, &CruxProcessRunner::processFinished);
+    QVERIFY(runner.startProcess(QStringLiteral("sh"), {QStringLiteral("-c"),
+        QStringLiteral("printf 'Password: \\nSorry, try again.\\nPassword: \\nSorry, try again.\\nPassword: \\nlocked\\n' >&2")}));
+    // One channel only: stdout and stderr have no order relative to each other.
+    QVERIFY(spyFinished.wait(5000));
+    const QString asking = QStringLiteral("[octoCRUX] The privilege helper is asking for a password.");
+    const QString wrong = QStringLiteral("[octoCRUX] Wrong password; the helper asks again.");
+    const QString sorry = QStringLiteral("Sorry, try again.");
+    QCOMPARE(shownLines(spyOutput), (QStringList{asking, sorry, wrong, asking, sorry, wrong, asking, QStringLiteral("locked")}));
+    QCOMPARE(spyAuth.count(), 3);
+}
+
+void TestCruxProcessRunner::testSilentStartHint() {
+    {
+        CruxProcessRunner runner;
+        runner.setSilenceHintMs(300);
+        QSignalSpy spyWaiting(&runner, &CruxProcessRunner::waitingForProcess);
+        QSignalSpy spyEnded(&runner, &CruxProcessRunner::waitingEnded);
+        QSignalSpy spyFinished(&runner, &CruxProcessRunner::processFinished);
+        QVERIFY(runner.startProcess(QStringLiteral("sh"), {QStringLiteral("-c"), QStringLiteral("sleep 1.5; echo hi")}));
+        QVERIFY(spyWaiting.wait(1200));
+        QVERIFY(runner.isRunning());
+        QVERIFY(spyFinished.wait(5000));
+        QCOMPARE(spyWaiting.count(), 1);
+        QCOMPARE(spyEnded.count(), 1);
+    }
+    {
+        // Output first, then silence: not a wait for the helper.
+        CruxProcessRunner runner;
+        runner.setSilenceHintMs(300);
+        QSignalSpy spyWaiting(&runner, &CruxProcessRunner::waitingForProcess);
+        QSignalSpy spyFinished(&runner, &CruxProcessRunner::processFinished);
+        QVERIFY(runner.startProcess(QStringLiteral("sh"), {QStringLiteral("-c"), QStringLiteral("echo hi; sleep 1")}));
+        QVERIFY(spyFinished.wait(5000));
+        QCOMPARE(spyWaiting.count(), 0);
+    }
+}
+
+void TestCruxProcessRunner::testTooManyPasswordAttemptsIsAuthenticationError() {
+    CruxProcessRunner runner;
+    QSignalSpy spyFinished(&runner, &CruxProcessRunner::processFinished);
+    QVERIFY(runner.startProcess(QStringLiteral("sh"), {QStringLiteral("-c"),
+        QStringLiteral("printf 'Password: \\nSorry, try again.\\nPassword: \\nSorry, try again.\\nPassword: \\n"
+                       "sudo: 3 incorrect password attempts\\n' >&2; exit 1")}));
+    QVERIFY(spyFinished.wait(5000));
+    const QList<QVariant> args = spyFinished.takeFirst();
     QCOMPARE(args.at(1).value<OperationErrorKind>(), OperationErrorKind::AuthenticationError);
     QVERIFY(args.at(2).toString().contains(QStringLiteral("nothing was run as root")));
 }

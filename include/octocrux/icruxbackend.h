@@ -69,6 +69,11 @@ signals:
     void progressChanged(int current, int total, const QString &phase);
     void operationFinished(int exitCode, OperationErrorKind errorKind, const QString &summary);
     void rejectedConfigsDetected(const QStringList &rejectedFiles);
+    /**
+     * The running operation is waiting for the user, e.g. "Waiting for
+     * authentication...". An empty reason means it is no longer waiting.
+     */
+    void waitingChanged(const QString &reason);
 };
 
 } // namespace OctoCRUX

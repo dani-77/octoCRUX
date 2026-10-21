@@ -24,3 +24,18 @@ The lines "Password: ", "sudo: a password is required" and "Sorry, try
 again." are sudo's own stderr, passed through by qt-sudo. Everything else is
 OctoCRUX's own output. Verified afterwards: /var/lib/pkg/prt-get.locker
 (changed 00:53:20) lists only llvm clang lld compiler-rt, i.e. criu unlocked.
+
+octocrux-output-20261021-attempts.txt
+=====================================
+
+Source: the OctoCRUX Output tab, pasted verbatim by the owner on 2026-10-21,
+T480s, same qt-sudo/sudo versions, NOPASSWD rule commented out again.
+
+Build: the uncommitted working tree after 6a32d09 (prompt announcement and
+wrong-password hint added), so sudo's raw "Password: " lines are not shown:
+OctoCRUX replaces each with "[octoCRUX] The privilege helper is asking for a
+password." (the captured log the analyzer reads still has them).
+
+Sequence: Lock zstd, three wrong passwords in qt-sudo's dialog. sudo gave up
+with "sudo: 3 incorrect password attempts" (its own stderr, passed through by
+qt-sudo) and the helper exited 1. Nothing was locked.

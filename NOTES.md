@@ -633,7 +633,16 @@ Step 3 is also done: "Upgrade All..." in the tray opens OctoCRUX on the preview 
 The owner tags `v0.1.0`, copies the port into d77crux, and generates the footprint and signature. 5b (general settings) is done: *Settings...* at the end of the toolbar (owner's choice, over a new menu bar). It holds:
 - the preferred privilege helper (Automatic, or qt-sudo/sudo/doas/su, falling back to detection with a warning when the chosen one is not in `PATH`), also followed by the notifier's interactive actions but never by scheduled syncs;
 - the cancel grace period (5–120 s, default 10; closes SESSION_REPORT D5).
-Tested with a fake `sudo` first in `PATH`: the dialog's choice reaches the backend, and Sync runs `sudo ports -u` (a mutation check confirmed the test fails without the apply step). **[owner-reported 2026-10-21]** On the T480s, with sudo chosen in Settings, everything worked; the owner then set it back to Automatic. sudoers there is NOPASSWD, so this did not exercise a sudo password prompt. Owner decisions: once a day is the suggested automatic mode, changeable in the GUI; autostart is opt-in per user.
+Tested with a fake `sudo` first in `PATH`: the dialog's choice reaches the backend, and Sync runs `sudo ports -u` (a mutation check confirmed the test fails without the apply step). **[owner-reported 2026-10-21]** On the T480s, with sudo chosen in Settings, everything worked; the owner then set it back to Automatic. sudoers there is NOPASSWD, so this did not exercise a sudo password prompt.
+
+*2026-10-21, after Phase 5:*
+- **License:** `LICENSE` is the official GPL-2.0 text from gnu.org, unchanged. The owner chose GPL-2.0-only, and the README says so.
+- **Output messages:**
+  - helper password prompts are announced before their line ends ("Waiting for authentication...");
+  - a wrong-password hint follows sudo's `Sorry, try again.`;
+  - an elevated run that stays silent for 3 s gets a "Waiting for <helper>..." hint;
+  - `sudo: N incorrect password attempts` is classified as AuthenticationError (ARCHITECTURE §5.1 item 4, OPEN_QUESTIONS 2.x).
+  The tests use fake prompts (no real sudo). A mutation check confirmed that the runner and UI tests fail when a prompt is detected only at the end of its line. Owner decisions: once a day is the suggested automatic mode, changeable in the GUI; autostart is opt-in per user.
 
 1. **System Tray Daemon (`octocrux-notifier`):**
    - Lightweight standalone background tray indicator (`QSystemTrayIcon`).

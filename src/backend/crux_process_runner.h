@@ -51,6 +51,16 @@ public:
     void setCancelGracePeriodMs(int ms);
     int cancelGracePeriodMs() const;
 
+    /** Silence after start before waitingForProcess() is emitted. */
+    static constexpr int kDefaultSilenceHintMs = 3000;
+    void setSilenceHintMs(int ms);
+
+    /**
+     * True for a password prompt as sudo, su or doas print it ("Password: ",
+     * "[sudo] password for daniel: ", "doas (daniel@host) password: ").
+     */
+    static bool isPasswordPrompt(const QString &text);
+
 signals:
     void outputReceived(const QString &line, bool isError);
     /**
@@ -67,15 +77,29 @@ signals:
      * connects to it yet: users see only that output line in the Output tab.
      */
     void cancellationStalled(qint64 pid, int elapsedMs);
+    /**
+     * The process printed a password prompt. Emitted as soon as the prompt is in
+     * the buffer, before its line ends: sudo prints the '\n' only after the
+     * password was entered, so waiting for the line would announce it too late.
+     */
+    void authenticationRequested();
+    /** Nothing at all was printed during the first silence-hint period. */
+    void waitingForProcess();
+    /** Output arrived after authenticationRequested() or waitingForProcess(). */
+    void waitingEnded();
 
 private slots:
     void onReadyReadStandardOutput();
     void onReadyReadStandardError();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void onCancelGracePeriodElapsed();
+    void onSilenceHintElapsed();
 
 private:
     void processOutputBuffer(QByteArray &buffer, bool isError);
+    void announcePasswordPrompt();
+    /** Shows a complete line, except a prompt already announced. */
+    void emitLine(const QString &line, bool isError);
 
     std::unique_ptr<QProcess> m_process;
     QByteArray m_stdoutBuffer;
@@ -88,6 +112,9 @@ private:
     bool m_wasCancelled = false;
 
     QTimer m_cancelWatchdog;
+    QTimer m_silenceHint;
+    bool m_promptAnnounced = false;  // the pending prompt was announced; do not repeat it
+    bool m_waiting = false;          // a waiting state was signalled and not yet ended
 };
 
 } // namespace OctoCRUX

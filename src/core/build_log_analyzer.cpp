@@ -57,6 +57,10 @@ const QString kBuildTraceStart = QStringLiteral("+ build");
 // (tests/fixtures/crux3.8/qtsudo-auth). "Sorry, try again." alone is not an
 // error: sudo retries, and the run may still succeed.
 const QString kSudoPasswordRequired = QStringLiteral("sudo: a password is required");
+// sudo after passwd_tries (default 3) wrong passwords: "%u incorrect password
+// attempt(s)" in sudoers.so of sudo 1.9.17p2; through qt-sudo the line is
+// "sudo: 3 incorrect password attempts" (qtsudo-auth/octocrux-output-20261021-attempts.txt).
+const QRegularExpression kSudoIncorrectAttempts(QStringLiteral("^sudo: \\d+ incorrect password attempts?$"));
 
 // libc strerror(ENOSPC); printed by whichever tool hit the full filesystem.
 const QString kNoSpace = QStringLiteral("No space left on device");
@@ -118,7 +122,7 @@ OperationErrorKind BuildLogAnalyzer::classifyLog(const QString &logOutput, int e
     // Authentication failed: the command never ran as root, so nothing else in the
     // log describes a build.
     for (const QString &line : lines) {
-        if (line.trimmed() == kSudoPasswordRequired) {
+        if (line.trimmed() == kSudoPasswordRequired || kSudoIncorrectAttempts.match(line.trimmed()).hasMatch()) {
             return OperationErrorKind::AuthenticationError;
         }
     }

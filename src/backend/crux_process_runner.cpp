@@ -22,7 +22,20 @@ QString visibleTerminalText(const QString &text) {
     return text.mid(prevCr + 1, lastCr - prevCr - 1);
 }
 
+// sudo's own lines for a rejected password (sudoers.so of sudo 1.9.17p2, seen
+// through qt-sudo in tests/fixtures/crux3.8/qtsudo-auth).
+const QString kSudoTryAgain = QStringLiteral("Sorry, try again.");
+
 } // namespace
+
+bool CruxProcessRunner::isPasswordPrompt(const QString &text) {
+    // sudo's default prompt is "Password: " (fixture qtsudo-auth) or, with
+    // passprompt_override off on some systems, "[sudo] password for %p: ";
+    // su prints "Password: "; doas prints "doas (%u@%h) password: ".
+    static const QRegularExpression promptRegex(QStringLiteral(
+        "^(?:\\[sudo\\] password for \\S+|Password|doas \\(\\S+\\) password):\\s*$"));
+    return promptRegex.match(text).hasMatch();
+}
 
 CruxProcessRunner::CruxProcessRunner(QObject *parent)
     : QObject(parent)
@@ -31,6 +44,9 @@ CruxProcessRunner::CruxProcessRunner(QObject *parent)
     m_cancelWatchdog.setInterval(kDefaultCancelGracePeriodMs);
     connect(&m_cancelWatchdog, &QTimer::timeout,
             this, &CruxProcessRunner::onCancelGracePeriodElapsed);
+    m_silenceHint.setSingleShot(true);
+    m_silenceHint.setInterval(kDefaultSilenceHintMs);
+    connect(&m_silenceHint, &QTimer::timeout, this, &CruxProcessRunner::onSilenceHintElapsed);
 }
 
 CruxProcessRunner::~CruxProcessRunner() {
@@ -68,6 +84,10 @@ int CruxProcessRunner::cancelGracePeriodMs() const {
     return m_cancelWatchdog.interval();
 }
 
+void CruxProcessRunner::setSilenceHintMs(int ms) {
+    m_silenceHint.setInterval(ms);
+}
+
 bool CruxProcessRunner::startProcess(
     const QString &program,
     const QStringList &arguments,
@@ -86,6 +106,9 @@ bool CruxProcessRunner::startProcess(
     m_stderrBuffer.clear();
     m_wasCancelled = false;
     m_cancelWatchdog.stop();
+    m_silenceHint.stop();
+    m_promptAnnounced = false;
+    m_waiting = false;
 
     m_process = std::make_unique<QProcess>();
 
@@ -111,6 +134,9 @@ bool CruxProcessRunner::startProcess(
     // prompt in a Pkgfile (or anything else reading stdin) gets EOF and fails,
     // instead of blocking forever on a pipe nobody writes to.
     m_process->closeWriteChannel();
+    // qt-sudo's password dialog, or its error window waiting for OK, prints
+    // nothing to us: say so if the start stays silent.
+    m_silenceHint.start();
     return true;
 }
 
@@ -147,6 +173,42 @@ void CruxProcessRunner::onCancelGracePeriodElapsed() {
     emit cancellationStalled(pid, elapsedMs);
 }
 
+void CruxProcessRunner::onSilenceHintElapsed() {
+    if (!isRunning()) {
+        return;
+    }
+    m_waiting = true;
+    emit waitingForProcess();
+}
+
+void CruxProcessRunner::announcePasswordPrompt() {
+    if (m_promptAnnounced) {
+        return;
+    }
+    m_promptAnnounced = true;
+    m_waiting = true;
+    emit outputReceived(QStringLiteral("[octoCRUX] The privilege helper is asking for a password."), false);
+    emit authenticationRequested();
+}
+
+void CruxProcessRunner::emitLine(const QString &line, bool isError) {
+    if (isPasswordPrompt(line)) {
+        // The prompt's line has ended (the password was entered, or sudo gave up).
+        // Announce it if that did not happen while it was pending, and do not repeat it.
+        announcePasswordPrompt();
+        m_promptAnnounced = false;
+        return;
+    }
+    if (m_waiting) {
+        m_waiting = false;
+        emit waitingEnded();
+    }
+    emit outputReceived(line, isError);
+    if (line == kSudoTryAgain) {
+        emit outputReceived(QStringLiteral("[octoCRUX] Wrong password; the helper asks again."), false);
+    }
+}
+
 void CruxProcessRunner::processOutputBuffer(QByteArray &buffer, bool isError) {
     int newlineIdx = -1;
     while ((newlineIdx = buffer.indexOf('\n')) != -1) {
@@ -174,7 +236,13 @@ void CruxProcessRunner::processOutputBuffer(QByteArray &buffer, bool isError) {
             emit phaseChanged(match.captured(1).trimmed());
         }
 
-        emit outputReceived(line, isError);
+        emitLine(line, isError);
+    }
+
+    // A prompt waits without '\n' until it is answered: announce it now.
+    if (!buffer.isEmpty() && isPasswordPrompt(QString::fromUtf8(buffer))) {
+        announcePasswordPrompt();
+        return;
     }
 
     // No '\n' yet: report what a terminal would show now. That is the text after the
@@ -197,31 +265,34 @@ void CruxProcessRunner::processOutputBuffer(QByteArray &buffer, bool isError) {
 
 void CruxProcessRunner::onReadyReadStandardOutput() {
     if (!m_process) return;
+    m_silenceHint.stop();
     m_stdoutBuffer.append(m_process->readAllStandardOutput());
     processOutputBuffer(m_stdoutBuffer, false);
 }
 
 void CruxProcessRunner::onReadyReadStandardError() {
     if (!m_process) return;
+    m_silenceHint.stop();
     m_stderrBuffer.append(m_process->readAllStandardError());
     processOutputBuffer(m_stderrBuffer, true);
 }
 
 void CruxProcessRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus) {
     m_cancelWatchdog.stop();
+    m_silenceHint.stop();
 
     // Flush any remaining buffers
     // (e.g. a progress meter cut off by Cancel: keep only its visible state)
     if (!m_stdoutBuffer.isEmpty()) {
         const QString line = visibleTerminalText(QString::fromUtf8(m_stdoutBuffer));
         m_accumulatedLog.append(line);
-        emit outputReceived(line, false);
+        emitLine(line, false);
         m_stdoutBuffer.clear();
     }
     if (!m_stderrBuffer.isEmpty()) {
         const QString line = visibleTerminalText(QString::fromUtf8(m_stderrBuffer));
         m_accumulatedLog.append(line);
-        emit outputReceived(line, true);
+        emitLine(line, true);
         m_stderrBuffer.clear();
     }
 

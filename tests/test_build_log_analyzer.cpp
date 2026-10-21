@@ -194,6 +194,12 @@ void TestBuildLogAnalyzer::testRealQtSudoAuthentication() {
     // 1. and 4. Plain successes.
     QCOMPARE(BuildLogAnalyzer::classifyLog(ops[0], 0), OperationErrorKind::None);
     QCOMPARE(BuildLogAnalyzer::classifyLog(ops[3], 0), OperationErrorKind::None);
+    // Too many wrong passwords (owner's capture of the same day, Lock zstd): exit code 1.
+    QFile attempts(QStringLiteral(OCTOCRUX_SOURCE_DIR "/tests/fixtures/crux3.8/qtsudo-auth/octocrux-output-20261021-attempts.txt"));
+    QVERIFY(attempts.open(QIODevice::ReadOnly));
+    const QString tooMany = QString::fromUtf8(attempts.readAll());
+    QVERIFY(tooMany.contains(QStringLiteral("\nsudo: 3 incorrect password attempts\n")));
+    QCOMPARE(BuildLogAnalyzer::classifyLog(tooMany, 1), OperationErrorKind::AuthenticationError);
     // A real build failure log is never mistaken for an authentication failure.
     QCOMPARE(BuildLogAnalyzer::classifyLog(fixture(QStringLiteral("md5")), 1), OperationErrorKind::ChecksumError);
 }

@@ -92,6 +92,8 @@ MainWindow::MainWindow(std::shared_ptr<ICruxBackend> backend, QWidget *parent)
             this, &MainWindow::onOperationFinished);
     connect(m_backend.get(), &ICruxBackend::rejectedConfigsDetected,
             this, &MainWindow::onRejectedConfigsDetected);
+    connect(m_backend.get(), &ICruxBackend::waitingChanged,
+            this, &MainWindow::onWaitingChanged);
 
     refreshCatalog();
     updateActionButtons();
@@ -603,9 +605,17 @@ void MainWindow::onProgressChanged(int current, int total, const QString &phase)
         m_progressBar->setRange(0, total);
         m_progressBar->setValue(current);
     }
+    m_currentPhase = phase;
     if (m_operationPhaseLabel) {
         m_operationPhaseLabel->setText(phase);
     }
+}
+
+void MainWindow::onWaitingChanged(const QString &reason) {
+    if (!m_operationInProgress || !m_operationPhaseLabel) {
+        return;
+    }
+    m_operationPhaseLabel->setText(reason.isEmpty() ? m_currentPhase : reason);
 }
 
 void MainWindow::onOperationFinished(int exitCode, OperationErrorKind errorKind, const QString &summary) {

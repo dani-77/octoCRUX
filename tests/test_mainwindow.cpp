@@ -85,6 +85,8 @@ private slots:
     void testFootprintMissingIsReportedNotOffered();
     void testCloseRefusedDuringOperation();
     void testSettingsChangeHelperAndCancelGrace();
+    void testPasswordPromptShowsWaitingInStatusBar();
+    void testWaitingHintRestoresThePhase();
 
 private:
     QString readFile(const QString &filePath);
@@ -371,6 +373,55 @@ void TestMainWindow::testSettingsChangeHelperAndCancelGrace() {
     QCOMPARE(m_adapter->privilegeHelperType(), PrivilegeHelperType::None);
     QVERIFY(m_window->outputLogEdit()->toPlainText().contains(
         QStringLiteral("the privilege helper chosen in Settings ('sudo') is not in PATH")));
+}
+
+void TestMainWindow::testPasswordPromptShowsWaitingInStatusBar() {
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    auto restore = qScopeGuard([this]() {
+        removeFakeTools();
+        qunsetenv("FAKE_SUDO_PROMPT_SECONDS");
+        m_adapter->setPrivilegeHelperType(PrivilegeHelperType::None);
+    });
+    // A stand-in sudo that prints its prompt, waits 2 s as if for the password, then runs the command.
+    const QString fakeSudo = m_fakeBin->filePath(QStringLiteral("sudo"));
+    QVERIFY(QFile::link(m_sourceDir + QStringLiteral("/tests/scripts/fake_sudo.sh"), fakeSudo));
+    QVERIFY2(QStandardPaths::findExecutable(QStringLiteral("sudo")) == fakeSudo,
+             "fake sudo not first in PATH; refusing to click");
+    qputenv("FAKE_SUDO_PROMPT_SECONDS", "2");
+    m_adapter->setPrivilegeHelperType(PrivilegeHelperType::Sudo);
+
+    QLabel *phase = nullptr;
+    for (QLabel *l : m_window->statusBar()->findChildren<QLabel*>()) {
+        if (l->styleSheet().contains(QLatin1String("#1976d2"))) phase = l;
+    }
+    QVERIFY(phase);
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+    QVERIFY(selectPort(QStringLiteral("gtk3")));
+    toolButton(QStringLiteral("Lock"))->click();
+
+    QTRY_COMPARE_WITH_TIMEOUT(phase->text(), QStringLiteral("Waiting for authentication..."), 1500);
+    QVERIFY(m_window->outputLogEdit()->toPlainText().contains(
+        QStringLiteral("[octoCRUX] The privilege helper is asking for a password.")));
+    QVERIFY(spyFinished.wait(5000));
+    QVERIFY(phase->text() != QLatin1String("Waiting for authentication..."));
+    // sudo's raw prompt is not repeated in Output; the command did run, through sudo.
+    QVERIFY(!m_window->outputLogEdit()->toPlainText().contains(QStringLiteral("\nPassword:")));
+    QCOMPARE(probeLines(), (QStringList{QStringLiteral("sudo prt-get lock gtk3"), QStringLiteral("lock gtk3")}));
+    m_window->setSearchText(QString());
+}
+
+void TestMainWindow::testWaitingHintRestoresThePhase() {
+    emit m_adapter->progressChanged(1, 1, QStringLiteral("Locking x"));
+    QLabel *phase = nullptr;
+    for (QLabel *l : m_window->statusBar()->findChildren<QLabel*>()) {
+        if (l->styleSheet().contains(QLatin1String("#1976d2"))) phase = l;
+    }
+    QVERIFY(phase);
+    emit m_adapter->waitingChanged(QStringLiteral("Waiting for qt-sudo... (a password dialog or message may be open)"));
+    QCOMPARE(phase->text(), QStringLiteral("Waiting for qt-sudo... (a password dialog or message may be open)"));
+    emit m_adapter->waitingChanged(QString());
+    QCOMPARE(phase->text(), QStringLiteral("Locking x"));
+    emit m_adapter->operationFinished(0, OperationErrorKind::None, QStringLiteral("ok"));
 }
 
 bool TestMainWindow::installFakeTools() {
