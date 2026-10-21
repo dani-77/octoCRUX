@@ -74,6 +74,7 @@ private slots:
     void testSyncConfirmRejectStartsNoProcess();
     void testBuildChecksAreKeptPerPortUntilARun();
     void testBuildChecksReachCommandAndResetAfterRun();
+    void testLockAndUnlockStartTheHelper();
     void testFootprintRetryOfferedForNewOnlyFailures();
     void testFootprintMissingIsReportedNotOffered();
     void testCloseRefusedDuringOperation();
@@ -803,6 +804,32 @@ QString pkgmkFixture(const QString &sourceDir, const QString &name) {
     return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
 }
 } // namespace
+
+void TestMainWindow::testLockAndUnlockStartTheHelper() {
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    auto restore = qScopeGuard([this]() { removeFakeTools(); });
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+
+    // gtk3 is unlocked in the fixture: the button reads "Lock" and must run "prt-get lock gtk3".
+    QVERIFY(selectPort(QStringLiteral("gtk3")));
+    QToolButton *lock = toolButton(QStringLiteral("Lock"));
+    QVERIFY2(lock && lock->isEnabled(), "Lock button missing or disabled with gtk3 selected");
+    lock->click();
+    QVERIFY2(spyFinished.wait(5000), "no operationFinished after Lock");
+    QCOMPARE(probeLines(), QStringList{QStringLiteral("lock gtk3")});
+
+    // Not installed (a2ps): prt-get would answer "Package 'a2ps' not found" (owner,
+    // 2026-10-21), so Lock is disabled and says why.
+    QVERIFY(selectPort(QStringLiteral("a2ps")));
+    QVERIFY(!lock->isEnabled());
+    QCOMPARE(lock->toolTip(), QStringLiteral("prt-get can only lock installed packages"));
+    // Locked but not installed (rust in the fixture): Unlock stays available.
+    QVERIFY(selectPort(QStringLiteral("rust")));
+    QCOMPARE(lock->text(), QStringLiteral("Unlock"));
+    QVERIFY(lock->isEnabled());
+    QCOMPARE(probeLines().size(), 1);
+    m_window->setSearchText(QString());
+}
 
 void TestMainWindow::testFootprintRetryOfferedForNewOnlyFailures() {
     QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");

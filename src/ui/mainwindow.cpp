@@ -796,8 +796,15 @@ void MainWindow::updateActionButtons() {
         }
         m_btnUpgrade->setEnabled(port.installStatus == InstallStatus::Outdated
                                  && port.lockStatus == LockStatus::Unlocked);
-        m_btnLock->setEnabled(true);
-        m_btnLock->setText(port.lockStatus == LockStatus::Locked ? QStringLiteral("Unlock") : QStringLiteral("Lock"));
+        // prt-get 5.19.9 refuses to lock a package that is not installed ("Package
+        // '<name>' not found", rc 255). Unlock stays available, so an older lock on an
+        // uninstalled port (e.g. rust) can still be removed.
+        const bool isLocked = port.lockStatus == LockStatus::Locked;
+        m_btnLock->setEnabled(isLocked || isInst);
+        m_btnLock->setText(isLocked ? QStringLiteral("Unlock") : QStringLiteral("Lock"));
+        m_btnLock->setToolTip(isLocked || isInst
+            ? QStringLiteral("Toggle lock status for selected package")
+            : QStringLiteral("prt-get can only lock installed packages"));
     } else {
         m_btnInstall->setEnabled(false);
         m_btnRemove->setEnabled(false);
@@ -1069,7 +1076,10 @@ void MainWindow::onCustomContextMenuRequested(const QPoint &pos) {
 
     const bool isLocked = (port.lockStatus == LockStatus::Locked);
     QAction *actLock = menu.addAction(isLocked ? QStringLiteral("Unlock '%1'").arg(port.name) : QStringLiteral("Lock '%1'").arg(port.name));
-    actLock->setEnabled(!m_operationInProgress);
+    actLock->setEnabled(!m_operationInProgress && (isLocked || port.isInstalled()));
+    if (!isLocked && !port.isInstalled()) {
+        actLock->setToolTip(QStringLiteral("prt-get can only lock installed packages"));
+    }
     connect(actLock, &QAction::triggered, this, &MainWindow::onToggleLockClicked);
 
     menu.addSeparator();
