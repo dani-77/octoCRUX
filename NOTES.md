@@ -642,7 +642,9 @@ Tested with a fake `sudo` first in `PATH`: the dialog's choice reaches the backe
   - a wrong-password hint follows sudo's `Sorry, try again.`;
   - an elevated run that stays silent for 3 s gets a "Waiting for <helper>..." hint;
   - `sudo: N incorrect password attempts` is classified as AuthenticationError (ARCHITECTURE §5.1 item 4, OPEN_QUESTIONS 2.x).
-  The tests use fake prompts (no real sudo). A mutation check confirmed that the runner and UI tests fail when a prompt is detected only at the end of its line. Owner decisions: once a day is the suggested automatic mode, changeable in the GUI; autostart is opt-in per user.
+  The tests use fake prompts (no real sudo). A mutation check confirmed that the runner and UI tests fail when a prompt is detected only at the end of its line.
+- **`lastSync` in ISO 8601:** `sync/lastSync` is now written as ISO 8601 with the UTC offset (`2026-10-21T12:00:55+01:00`), not QSettings' binary `@DateTime(...)`. The old form is still read, and is rewritten on the next sync. Checked on a copy of the owner's real file: the legacy value reads as 12:00:55. An older build's reader (`value().toDateTime()`) also parses the new string, so a notifier still on the previous build keeps working. The tests also pass with TZ=UTC and TZ=America/New_York.
+- **Manual Cancel test port** `tools/manual-ports/octo-cancel-test/` (README in `tools/manual-ports/`): it is silent for 180 s, then prints one line per second for 180 s. It tests the SIGPIPE hypothesis for the zsh work directory left behind (pkgmk's `interrupted()` trap never ran: `/var/log/pkgbuild/zsh.log` ends mid-configure, without `Interrupted.`). A shortened copy built unprivileged in a sandbox (pkgmk rc 0, with no sources). The test with qt-sudo is the owner's to run. Owner decisions: once a day is the suggested automatic mode, changeable in the GUI; autostart is opt-in per user.
 
 1. **System Tray Daemon (`octocrux-notifier`):**
    - Lightweight standalone background tray indicator (`QSystemTrayIcon`).

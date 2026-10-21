@@ -1,4 +1,6 @@
 #include <QTest>
+#include <QFile>
+#include <QSettings>
 #include <QTemporaryDir>
 #include "core/sync_schedule.h"
 #include "core/octocrux_settings.h"
@@ -18,6 +20,7 @@ private slots:
     void testDaysSinceSync();
     void testSettingsRoundTripAndDefaults();
     void testGeneralSettingsRoundTripAndInvalidValues();
+    void testLegacyBinaryLastSyncIsStillRead();
 
 private:
     static QDateTime at(int day, int hour, int minute = 0) {
@@ -108,6 +111,39 @@ void TestSyncSchedule::testSettingsRoundTripAndDefaults() {
     QCOMPARE(reread.syncSchedule().mode, SyncMode::OnceADayAt);
     QCOMPARE(reread.syncSchedule().hour, 23);
     QCOMPARE(reread.lastSync(), at(21, 7, 17));
+
+    // Readable in the file: ISO 8601 with the UTC offset, not a binary @DateTime(...).
+    QFile raw(file);
+    QVERIFY(raw.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString text = QString::fromUtf8(raw.readAll());
+    const QDateTime when = at(21, 7, 17);
+    QVERIFY2(text.contains(QStringLiteral("lastSync=") + when.toOffsetFromUtc(when.offsetFromUtc()).toString(Qt::ISODate)),
+             qPrintable(text));
+    QVERIFY(!text.contains(QStringLiteral("@DateTime")));
+}
+
+void TestSyncSchedule::testLegacyBinaryLastSyncIsStillRead() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString file = dir.filePath(QStringLiteral("octoCRUX.conf"));
+    {
+        // How builds before 2026-10-21 wrote it: QSettings' binary @DateTime(...).
+        QSettings old(file, QSettings::IniFormat);
+        old.setValue(QStringLiteral("sync/lastSync"), at(21, 8, 47));
+    }
+    {
+        QFile raw(file);
+        QVERIFY(raw.open(QIODevice::ReadOnly));
+        QVERIFY(raw.readAll().contains("@DateTime("));
+    }
+    QCOMPARE(OctoCruxSettings(file).lastSync(), at(21, 8, 47));
+
+    // Garbage reads as "never synced", so the notifier says so instead of crashing.
+    {
+        QSettings old(file, QSettings::IniFormat);
+        old.setValue(QStringLiteral("sync/lastSync"), QStringLiteral("yesterday"));
+    }
+    QVERIFY(!OctoCruxSettings(file).lastSync().isValid());
 }
 
 void TestSyncSchedule::testGeneralSettingsRoundTripAndInvalidValues() {

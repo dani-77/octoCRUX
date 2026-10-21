@@ -26,7 +26,11 @@ public:
     SyncSchedule syncSchedule() const;
     void setSyncSchedule(const SyncSchedule &schedule);
 
-    /** Last successful `ports -u` run by OctoCRUX or its notifier; invalid if none. */
+    /**
+     * Last successful `ports -u` run by OctoCRUX or its notifier; invalid if none.
+     * Stored as ISO 8601 with the UTC offset; the older binary @DateTime value
+     * is still read (and rewritten as ISO on the next sync).
+     */
     QDateTime lastSync() const;
     void setLastSync(const QDateTime &when);
 

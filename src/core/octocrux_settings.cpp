@@ -43,11 +43,21 @@ void OctoCruxSettings::setSyncSchedule(const SyncSchedule &schedule) {
 }
 
 QDateTime OctoCruxSettings::lastSync() const {
-    return m_settings->value(kLastSync).toDateTime();
+    const QVariant v = m_settings->value(kLastSync);
+    if (v.typeId() == QMetaType::QDateTime) {
+        return v.toDateTime(); // written before 2026-10-21 as a binary @DateTime(...)
+    }
+    const QDateTime parsed = QDateTime::fromString(v.toString(), Qt::ISODate);
+    return parsed.isValid() ? parsed.toLocalTime() : QDateTime();
 }
 
 void OctoCruxSettings::setLastSync(const QDateTime &when) {
-    m_settings->setValue(kLastSync, when);
+    if (!when.isValid()) {
+        m_settings->remove(kLastSync);
+        return;
+    }
+    // ISO 8601 with the UTC offset, readable in the file: 2026-10-21T08:47:00+01:00
+    m_settings->setValue(kLastSync, when.toOffsetFromUtc(when.offsetFromUtc()).toString(Qt::ISODate));
 }
 
 std::optional<PrivilegeHelperType> OctoCruxSettings::preferredHelper() const {

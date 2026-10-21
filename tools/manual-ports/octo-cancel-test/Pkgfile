@@ -1,0 +1,19 @@
+# Description: OctoCRUX manual test port: long silent and noisy phases for Cancel tests
+# Maintainer: Daniel Azevedo, daniazevedo77 at gmail dot com
+
+name=octo-cancel-test
+version=1
+release=1
+source=()
+
+build() {
+	echo "octo-cancel-test: phase 1, silent for 180 s (press Cancel now to test the silent case)"
+	sleep 180
+	echo "octo-cancel-test: phase 2, one line per second for 180 s (Cancel here for the noisy case)"
+	for i in $(seq 1 180); do
+		echo "octo-cancel-test: tick $i"
+		sleep 1
+	done
+	install -d $PKG/usr/share/octo-cancel-test
+	touch $PKG/usr/share/octo-cancel-test/done
+}
