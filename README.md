@@ -69,7 +69,16 @@ The resulting binaries will be:
 
 ## Notifier and automatic sync
 
-`octocrux-notifier` sits in the system tray. It shows how many packages Upgrade All would update (locked ones are counted apart) and how long ago the ports tree was synchronized. Reading needs no privileges: it uses `prt-get printf`. It never installs, upgrades or removes packages. Start it with `octocrux-notifier &`; starting it automatically with the session is up to each user.
+`octocrux-notifier` sits in the system tray. It shows how many packages Upgrade All would update (locked ones are counted apart) and how long ago the ports tree was synchronized. Reading needs no privileges: it uses `prt-get printf`. It never installs, upgrades or removes packages. Its "Upgrade All..." entry opens OctoCRUX on the Upgrade All preview (`octocrux --upgrade-all`), and nothing runs until you press Apply there.
+
+Start it with `octocrux-notifier &`. Starting it with the session is up to each user and is not enabled by default. To enable it, copy the desktop file into your autostart directory:
+```sh
+mkdir -p ~/.config/autostart
+cp data/octocrux-notifier.desktop ~/.config/autostart/
+# until OctoCRUX is installed system-wide, point Exec= at the build:
+sed -i "s|^Exec=.*|Exec=$HOME/octoCRUX/build/octocrux-notifier|" ~/.config/autostart/octocrux-notifier.desktop
+```
+To disable it, remove that file.
 
 **Syncing** (`ports -u`) needs root, because it rewrites `/usr/ports`. "Sync ports tree now" in the tray menu runs it through the privilege helper (qt-sudo), which may ask for a password. Automatic sync is **off** by default; turn it on in *Options…* (once a day is suggested). A scheduled sync never shows a password dialog. It runs only if one of these allows `/usr/bin/ports -u` without a password, and otherwise only reminds you:
 

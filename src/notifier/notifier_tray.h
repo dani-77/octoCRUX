@@ -32,6 +32,7 @@ private slots:
     void onNewUpdates(int upgradable);
     void onSyncFinished(bool success, const QString &summary);
     void openOctoCrux();
+    void openUpgradeAll();
     void openOptions();
     void onAutomaticSyncNeedsAuthorization(bool needed);
 
@@ -44,6 +45,8 @@ private:
     QAction *m_actStatus = nullptr;
     QAction *m_actSyncAge = nullptr;
     QAction *m_actSync = nullptr;
+    QAction *m_actUpgradeAll = nullptr;
+    void launchOctoCrux(const QStringList &arguments);
 };
 
 } // namespace OctoCRUX

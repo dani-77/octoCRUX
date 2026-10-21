@@ -30,6 +30,9 @@ NotifierTray::NotifierTray(NotifierCore *core, std::shared_ptr<OctoCruxSettings>
     m_menu->addSeparator();
     QAction *actOpen = m_menu->addAction(QStringLiteral("Open OctoCRUX"));
     connect(actOpen, &QAction::triggered, this, &NotifierTray::openOctoCrux);
+    m_actUpgradeAll = m_menu->addAction(QStringLiteral("Upgrade All..."));
+    m_actUpgradeAll->setToolTip(QStringLiteral("Opens OctoCRUX on the Upgrade All preview; nothing runs until you press Apply."));
+    connect(m_actUpgradeAll, &QAction::triggered, this, &NotifierTray::openUpgradeAll);
     m_actSync = m_menu->addAction(QStringLiteral("Sync ports tree now (ports -u)"));
     m_actSync->setToolTip(QStringLiteral("Runs 'ports -u' through the privilege helper; it may ask for a password."));
     connect(m_actSync, &QAction::triggered, m_core, &NotifierCore::syncNow);
@@ -99,6 +102,7 @@ void NotifierTray::updateFromCore() {
     m_actStatus->setText(status);
     m_actSyncAge->setText(age);
     m_actSync->setEnabled(!m_core->isSyncing());
+    m_actUpgradeAll->setEnabled(!m_core->isSyncing() && m_core->summary().upgradable() > 0);
     m_tray->setIcon(makeIcon(m_core->summary().upgradable(), m_core->isSyncing()));
     m_tray->setToolTip(QStringLiteral("OctoCRUX\n%1\n%2").arg(status, age));
 }
@@ -137,12 +141,20 @@ void NotifierTray::onAutomaticSyncNeedsAuthorization(bool needed) {
 }
 
 void NotifierTray::openOctoCrux() {
+    launchOctoCrux({});
+}
+
+void NotifierTray::openUpgradeAll() {
+    launchOctoCrux({QStringLiteral("--upgrade-all")});
+}
+
+void NotifierTray::launchOctoCrux(const QStringList &arguments) {
     // Prefer the octocrux next to this binary (build tree or same prefix), then PATH.
     QString program = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("octocrux"));
     if (!QFileInfo(program).isExecutable()) {
         program = QStandardPaths::findExecutable(QStringLiteral("octocrux"));
     }
-    if (program.isEmpty() || !QProcess::startDetached(program, {})) {
+    if (program.isEmpty() || !QProcess::startDetached(program, arguments)) {
         m_tray->showMessage(QStringLiteral("OctoCRUX"), QStringLiteral("Could not start octocrux"),
                             QSystemTrayIcon::Warning, 10000);
     }

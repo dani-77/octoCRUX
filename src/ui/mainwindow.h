@@ -66,6 +66,12 @@ public:
 
 public slots:
     void refreshCatalog();
+    /**
+     * Upgrade All as if the button had been pressed: opens the transaction
+     * preview, and nothing runs until Apply. Used by `octocrux --upgrade-all`
+     * (the notifier's "Upgrade All..."). With nothing to upgrade it says so.
+     */
+    void requestUpgradeAll();
     void setFilterStatus(StatusFilter status);
     void setFilterCollection(const QString &collection);
     void setSearchText(const QString &text);

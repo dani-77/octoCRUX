@@ -626,7 +626,7 @@ Details in OPEN_QUESTIONS 2.15:
 *Status 2026-10-21:* Phase 5c steps 1 and 2 are done (ARCHITECTURE §5.5):
 - step 1: a read-only tray notifier, manual `ports -u`, and shared settings with the sync time (the owner confirmed the icon and tooltip);
 - step 2: automatic sync through pkexec (opt-in polkit rule) or `sudo -n`, never asking for a password unattended, plus the Options dialog.
-Step 3 (Upgrade All from the tray, autostart file) is next. 5a (packaging: install rules, `.desktop`, d77crux `Pkgfile`) and 5b (general settings dialog) follow. Owner decisions: once a day is the suggested automatic mode, changeable in the GUI; autostart is opt-in per user.
+Step 3 is also done: "Upgrade All..." in the tray opens OctoCRUX on the preview (`--upgrade-all`), and an autostart desktop file is shipped but not enabled. Next: 5a (packaging: install rules, `octocrux.desktop`, d77crux `Pkgfile`, installing the polkit action) and 5b (general settings). 5a (packaging: install rules, `.desktop`, d77crux `Pkgfile`) and 5b (general settings dialog) follow. Owner decisions: once a day is the suggested automatic mode, changeable in the GUI; autostart is opt-in per user.
 
 1. **System Tray Daemon (`octocrux-notifier`):**
    - Lightweight standalone background tray indicator (`QSystemTrayIcon`).

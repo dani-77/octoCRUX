@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=OctoCRUX Notifier
+GenericName=Package Update Notifier
+Comment=Shows available CRUX package updates in the system tray (read-only; syncs the ports tree only when asked)
+Exec=octocrux-notifier
+Icon=system-software-update
+Terminal=false
+Categories=System;PackageManager;
+StartupNotify=false

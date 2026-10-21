@@ -72,6 +72,7 @@ private slots:
     void testRefreshDoesNotLeaveStaleButtons();
     void testUpgradePreviewGatesExecution();
     void testInstallPreviewRejectStartsNoProcess();
+    void testRequestUpgradeAllFromTheNotifier();
     void testSyncConfirmRejectStartsNoProcess();
     void testSuccessfulSyncRecordsLastSyncForTheNotifier();
     void testBuildChecksAreKeptPerPortUntilARun();
@@ -676,6 +677,53 @@ void TestMainWindow::testRefreshDoesNotLeaveStaleButtons() {
     QVERIFY(!toolButton(QStringLiteral("Upgrade"))->isEnabled());
     QVERIFY(!toolButton(QStringLiteral("Lock"))->isEnabled());
     m_window->setSearchText(QString());
+}
+
+void TestMainWindow::testRequestUpgradeAllFromTheNotifier() {
+    // `octocrux --upgrade-all` (the notifier's "Upgrade All...") calls requestUpgradeAll().
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to continue");
+    auto restore = qScopeGuard([this]() { removeFakeTools(); });
+
+    // 1. Real fixture: every outdated port is locked, so it only says so.
+    QString seen;
+    onNextModal([&](QWidget *w) {
+        seen = w->objectName();
+        if (auto *d = qobject_cast<QDialog*>(w)) d->reject();
+    });
+    m_window->requestUpgradeAll();
+    QCOMPARE(seen, QStringLiteral("nothingToUpgradeMessage"));
+
+    // 2. gtk3 marked outdated in memory (one field of the fixture): the preview
+    //    opens on "prt-get update gtk3"; rejecting it starts nothing.
+    const QString printfPath = m_sourceDir + QStringLiteral("/tests/fixtures/crux3.8/cmd/printf-production-11token.out");
+    const QString original = readFile(printfPath);
+    QStringList lines = original.split(QLatin1Char('\n'));
+    for (QString &line : lines) {
+        QStringList f = line.split(QLatin1Char('\t'));
+        if (f.size() == 11 && f.at(0) == QLatin1String("gtk3")) {
+            f[3] = QStringLiteral("diff");
+            line = f.join(QLatin1Char('\t'));
+        }
+    }
+    const QStringList printfArgs = {QStringLiteral("printf"), QString::fromLatin1(PrintfParser::PRODUCTION_FORMAT)};
+    m_mockRunner->registerResponse(QStringLiteral("prt-get"), printfArgs, {0, lines.join(QLatin1Char('\n')), QString()});
+    auto restoreCatalog = qScopeGuard([&]() {
+        m_mockRunner->registerResponse(QStringLiteral("prt-get"), printfArgs, {0, original, QString()});
+        m_adapter->invalidateCache();
+        m_window->refreshCatalog();
+    });
+    m_adapter->invalidateCache();
+    m_window->refreshCatalog();
+
+    QString summary;
+    onNextModal([&](QWidget *w) {
+        if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(w)) summary = dlg->summaryText();
+        if (auto *d = qobject_cast<QDialog*>(w)) d->reject();
+    });
+    m_window->requestUpgradeAll();
+    QVERIFY2(summary.contains(QStringLiteral("1. prt-get update gtk3")), qPrintable(summary));
+    QTest::qWait(200);
+    QVERIFY(probeLines().isEmpty());
 }
 
 void TestMainWindow::testInstallPreviewRejectStartsNoProcess() {

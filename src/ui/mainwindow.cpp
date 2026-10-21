@@ -911,6 +911,21 @@ void MainWindow::onUpgradeClicked() {
     runTransaction(QStringLiteral("Confirm upgrade of %1").arg(portOpt->name), plan);
 }
 
+void MainWindow::requestUpgradeAll() {
+    if (m_operationInProgress) {
+        return;
+    }
+    if (!hasUpgradablePackages()) {
+        QMessageBox box(QMessageBox::Information, QStringLiteral("Upgrade All"),
+                        QStringLiteral("There are no outdated, unlocked packages to upgrade."),
+                        QMessageBox::Ok, this);
+        box.setObjectName(QStringLiteral("nothingToUpgradeMessage"));
+        box.exec();
+        return;
+    }
+    onUpgradeAllClicked();
+}
+
 void MainWindow::onUpgradeAllClicked() {
     if (m_operationInProgress) return;
     const TransactionPlan plan = m_planner->planUpgrade();
