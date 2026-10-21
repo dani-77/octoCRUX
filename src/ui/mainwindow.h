@@ -72,6 +72,16 @@ public:
     /** Build check exceptions chosen for the next run of a package (empty = defaults). */
     BuildCheckOverrides pendingBuildOverrides(const QString &portName) const;
 
+    /**
+     * Where to look for work directories left by a cancelled build. Empty (the
+     * default) reads PKGMK_WORK_DIR from pkgmk.conf; tests point it elsewhere.
+     */
+    void setWorkRootOverride(const QString &workRoot);
+
+    /** Delay between checks that the cancelled tree has ended, and how many checks. */
+    static constexpr int kLeftoverPollMs = 500;
+    static constexpr int kLeftoverPollAttempts = 20;
+
     /** The message shown when a close is refused during an operation (testing). */
     QMessageBox* closeRefusedMessage() const;
 
@@ -154,6 +164,12 @@ private:
      */
     void handleFootprintFailures(const QString &runLog);
     void offerFootprintRetry(const QStringList &ports);
+    /**
+     * After a Cancel: once no package tool runs (polled, see kLeftoverPollMs),
+     * reports work directories the build left behind and offers to remove them.
+     */
+    void checkLeftoverWorkDirs(int attemptsLeft);
+    QString leftoverWorkRoot() const;
     /** True if at least one package is outdated and unlocked (Upgrade All has work). */
     bool hasUpgradablePackages() const;
 
@@ -225,6 +241,7 @@ private:
     QSet<QString> m_knownRejected;
     bool m_rejectedReportedThisRun = false;
 
+    QString m_workRootOverride;
     std::shared_ptr<OctoCruxSettings> m_settings;
     bool m_syncInFlight = false;        // the running operation is ports -u
 };

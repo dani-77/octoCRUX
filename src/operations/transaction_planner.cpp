@@ -16,6 +16,21 @@ TransactionPlanner::TransactionPlanner(std::shared_ptr<ICruxBackend> backend)
 }
 
 QString TransactionPlanner::discoverWorkDirectory(const QString &rootPrefix) {
+    if (const auto configured = configuredWorkDirectory(rootPrefix)) {
+        return *configured;
+    }
+
+    // Fallbacks: /var/tmp -> /tmp
+    if (!rootPrefix.isEmpty() && QFileInfo::exists(rootPrefix + QStringLiteral("/var/tmp"))) {
+        return rootPrefix + QStringLiteral("/var/tmp");
+    }
+    if (QFileInfo::exists(QStringLiteral("/var/tmp"))) {
+        return QStringLiteral("/var/tmp");
+    }
+    return QStringLiteral("/tmp");
+}
+
+std::optional<QString> TransactionPlanner::configuredWorkDirectory(const QString &rootPrefix) {
     QString confPath = rootPrefix + QStringLiteral("/etc/pkgmk.conf");
     QFile file(confPath);
     if (!file.exists()) {
@@ -53,15 +68,7 @@ QString TransactionPlanner::discoverWorkDirectory(const QString &rootPrefix) {
             }
         }
     }
-
-    // Fallbacks: /var/tmp -> /tmp
-    if (!rootPrefix.isEmpty() && QFileInfo::exists(rootPrefix + QStringLiteral("/var/tmp"))) {
-        return rootPrefix + QStringLiteral("/var/tmp");
-    }
-    if (QFileInfo::exists(QStringLiteral("/var/tmp"))) {
-        return QStringLiteral("/var/tmp");
-    }
-    return QStringLiteral("/tmp");
+    return std::nullopt;
 }
 
 FilesystemInfo TransactionPlanner::inspectMount(const QString &targetPath) {

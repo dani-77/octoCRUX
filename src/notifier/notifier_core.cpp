@@ -1,4 +1,5 @@
 #include "notifier_core.h"
+#include "core/work_dir_cleanup.h"
 
 #include <QDir>
 #include <QFile>
@@ -71,21 +72,7 @@ void NotifierCore::refresh() {
 }
 
 bool NotifierCore::isPackageToolRunning() {
-    static const QSet<QString> tools = {QStringLiteral("prt-get"), QStringLiteral("ports"),
-                                        QStringLiteral("pkgmk"), QStringLiteral("pkgadd"),
-                                        QStringLiteral("pkgrm")};
-    const QStringList pids = QDir(QStringLiteral("/proc")).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-    for (const QString &pid : pids) {
-        if (pid.isEmpty() || !pid.at(0).isDigit()) {
-            continue;
-        }
-        QFile comm(QStringLiteral("/proc/%1/comm").arg(pid));
-        if (comm.open(QIODevice::ReadOnly)
-            && tools.contains(QString::fromUtf8(comm.readAll()).trimmed())) {
-            return true;
-        }
-    }
-    return false;
+    return WorkDirCleanup::isPackageToolRunning();
 }
 
 void NotifierCore::tick() {

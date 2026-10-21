@@ -221,3 +221,16 @@ target_compile_definitions(test_notifier PRIVATE
 )
 
 add_test(NAME test_notifier COMMAND test_notifier)
+
+# Define test_work_dir_cleanup executable (leftover pkgmk work directories after a Cancel)
+add_executable(test_work_dir_cleanup
+    test_work_dir_cleanup.cpp
+)
+
+target_link_libraries(test_work_dir_cleanup PRIVATE
+    octocrux_core
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_work_dir_cleanup COMMAND test_work_dir_cleanup)

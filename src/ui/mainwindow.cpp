@@ -2,9 +2,11 @@
 #include "core/build_log_analyzer.h"
 #include "transaction_preview_dialog.h"
 #include "settings_dialog.h"
+#include "core/work_dir_cleanup.h"
 #include "backend/privilege_helper.h"
 
 #include <QApplication>
+#include <QLocale>
 #include <QTableView>
 #include <QTabWidget>
 #include <QLineEdit>
@@ -673,6 +675,88 @@ void MainWindow::onOperationFinished(int exitCode, OperationErrorKind errorKind,
         handleFootprintFailures(m_outputLogEdit->toPlainText().mid(m_runOutputStart));
     }
     m_runOutputStart = -1;
+
+    if (errorKind == OperationErrorKind::Cancelled) {
+        // The root tree ends about a second after the helper; look once it has.
+        QTimer::singleShot(kLeftoverPollMs, this, [this]() { checkLeftoverWorkDirs(kLeftoverPollAttempts); });
+    }
+}
+
+void MainWindow::setWorkRootOverride(const QString &workRoot) {
+    m_workRootOverride = workRoot;
+}
+
+QString MainWindow::leftoverWorkRoot() const {
+    if (!m_workRootOverride.isEmpty()) {
+        return m_workRootOverride;
+    }
+    // Only a root that pkgmk.conf sets: the /var/tmp and /tmp fallbacks hold
+    // other things, and nothing is deleted on a guess.
+    return TransactionPlanner::configuredWorkDirectory(m_backend->rootPrefix()).value_or(QString());
+}
+
+void MainWindow::checkLeftoverWorkDirs(int attemptsLeft) {
+    if (m_operationInProgress) {
+        return; // something else started meanwhile
+    }
+    if (WorkDirCleanup::isPackageToolRunning()) {
+        if (attemptsLeft > 0) {
+            QTimer::singleShot(kLeftoverPollMs, this, [this, attemptsLeft]() { checkLeftoverWorkDirs(attemptsLeft - 1); });
+        } else if (m_outputLogEdit) {
+            appendOutputPlain(m_outputLogEdit, QStringLiteral(
+                "[octoCRUX] A package tool (prt-get, pkgmk, ...) is still running %1 s after the cancel. "
+                "Not checking for leftover work directories; check 'ps -ef'.")
+                .arg(kLeftoverPollMs * kLeftoverPollAttempts / 1000));
+        }
+        return;
+    }
+    const QString root = leftoverWorkRoot();
+    const QList<WorkDirCleanup::Leftover> leftovers = WorkDirCleanup::findLeftovers(root);
+    if (leftovers.isEmpty()) {
+        return;
+    }
+
+    const bool tmpfs = TransactionPlanner::inspectMount(root).isTmpfs;
+    QStringList paths;
+    QStringList lines;
+    for (const WorkDirCleanup::Leftover &l : leftovers) {
+        paths << l.path;
+        lines << QStringLiteral("%1 (%2)").arg(l.path, QLocale::c().formattedDataSize(static_cast<qint64>(l.bytes)));
+    }
+    const QString where = tmpfs ? QStringLiteral(", on tmpfs: it uses RAM until removed or until reboot") : QString();
+    if (m_outputLogEdit) {
+        for (const QString &line : std::as_const(lines)) {
+            appendOutputPlain(m_outputLogEdit, QStringLiteral(
+                "[octoCRUX] A cancelled build left the work directory %1%2.").arg(line, where));
+        }
+    }
+
+    QMessageBox box(QMessageBox::Question, QStringLiteral("Leftover work directories"),
+        QStringLiteral("pkgmk removes its work directory when a build is interrupted, but a Cancel "
+                       "stops it before it can%1. Left behind:\n\n  %2\n\n"
+                       "Remove them? This runs, with elevated privileges:\n\n  %3")
+            .arg(tmpfs ? QStringLiteral(" (these are on tmpfs, in RAM)") : QString(),
+                 lines.join(QStringLiteral("\n  ")),
+                 TransactionPreviewDialog::formatCommand(m_backend->removeWorkDirectoriesCommand(paths))),
+        QMessageBox::NoButton, this);
+    box.setObjectName(QStringLiteral("workDirCleanupMessage"));
+    QPushButton *removeButton = box.addButton(QStringLiteral("Remove"), QMessageBox::AcceptRole);
+    QPushButton *cancelButton = box.addButton(QMessageBox::Cancel);
+    removeButton->setAutoDefault(false);
+    box.setDefaultButton(cancelButton);
+    box.exec();
+    if (box.clickedButton() != removeButton) {
+        if (m_outputLogEdit) {
+            appendOutputPlain(m_outputLogEdit, QStringLiteral(
+                "[octoCRUX] Leftover work directories kept. To remove them later: %1")
+                .arg(TransactionPreviewDialog::formatCommand(m_backend->removeWorkDirectoriesCommand(paths))));
+        }
+        return;
+    }
+    if (m_outputLogEdit && m_tabWidget) {
+        m_tabWidget->setCurrentWidget(m_outputLogEdit);
+    }
+    m_backend->removeWorkDirectories(root, paths);
 }
 
 void MainWindow::handleFootprintFailures(const QString &runLog) {

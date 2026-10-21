@@ -61,6 +61,17 @@ public:
     virtual bool lockPort(const QString &portName) = 0;
     virtual bool unlockPort(const QString &portName) = 0;
     virtual void cancelActiveOperation() = 0;
+    /** The exact (wrapped) command removeWorkDirectories() would run for paths. */
+    virtual QStringList removeWorkDirectoriesCommand(const QStringList &paths) const { Q_UNUSED(paths); return {}; }
+    /**
+     * Removes pkgmk work directories left behind by a cancelled build, as root,
+     * after checking each path again (WorkDirCleanup::isRemovableWorkDir against
+     * workRoot). Refuses the whole request if any path fails. Reports through
+     * the usual progress, output and operationFinished signals.
+     */
+    virtual bool removeWorkDirectories(const QString &workRoot, const QStringList &paths) {
+        Q_UNUSED(workRoot); Q_UNUSED(paths); return false;
+    }
 
 signals:
     void outputReceived(const QString &text, bool isError);

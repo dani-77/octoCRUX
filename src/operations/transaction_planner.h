@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "octocrux/types.h"
 #include "octocrux/icruxbackend.h"
 
@@ -51,6 +53,13 @@ public:
      * falling back to /var/tmp then /tmp.
      */
     static QString discoverWorkDirectory(const QString &rootPrefix = QString());
+
+    /**
+     * @brief The work root set by PKGMK_WORK_DIR in pkgmk.conf (without "/$name"),
+     * or nullopt if pkgmk.conf does not set it. Unlike discoverWorkDirectory(),
+     * no fallback: callers that delete under it must not guess.
+     */
+    static std::optional<QString> configuredWorkDirectory(const QString &rootPrefix = QString());
 
     /**
      * @brief Inspects empirical filesystem capacity and mount metadata for a path.

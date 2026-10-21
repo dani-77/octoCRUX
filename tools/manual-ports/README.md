@@ -30,10 +30,16 @@ silent step tells the two apart.
 5. Delete `/usr/ports/d77crux/octo-cancel-test/` (and any leftover work directory).
 
 Reading the result:
-- Processes or the work directory left after phase 1, no `Interrupted.`: the
-  SIGPIPE hypothesis holds; a silent root build can outlive a Cancel.
-- Everything stops and the log ends with `Interrupted.`: SIGTERM reaches pkgmk,
-  and the hypothesis is wrong.
+- Processes left after phase 1: a silent root build can outlive a Cancel.
+- Everything stops, but the work directory stays and the log has no
+  `Interrupted.`: pkgmk's trap died of SIGPIPE before its `rm -rf`.
+
+**Result on the owner's T480s (2026-10-21) [verified]:** the second case, in
+both phases. The tree stopped within about a second, even during `sleep 180`.
+The work directory stayed. The cause was reproduced unprivileged: the trap's
+first `echo` hits the pipe whose reader (prt-get) already died (OPEN_QUESTIONS
+2.10.3). Since then OctoCRUX offers to remove the leftover after a Cancel;
+accepting it should leave `/usr/ports/work/` without `octo-cancel-test`.
 
 Without `.signature` or `.md5sum`, pkgmk warns and creates new ones. If your
 `pkgmk.conf` requires signatures, tick the signature exception (`-is`) in the

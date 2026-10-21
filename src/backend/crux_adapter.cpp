@@ -1,4 +1,5 @@
 #include "crux_adapter.h"
+#include "core/work_dir_cleanup.h"
 #include "core/printf_parser.h"
 #include "core/aliases_parser.h"
 #include "core/dependency_parser.h"
@@ -695,6 +696,44 @@ bool CruxAdapter::syncPortsTree() {
     const bool started = m_processRunner->startProcess(wrappedCmd.first(), wrappedCmd.mid(1));
     if (!started) {
         const QString err = QStringLiteral("Failed to start '%1 -u'").arg(m_portsBin);
+        emit outputReceived(QStringLiteral("[octoCRUX] Error: %1").arg(err), true);
+        emit operationFinished(-1, OperationErrorKind::GeneralError, err);
+        return false;
+    }
+    return true;
+}
+
+QStringList CruxAdapter::removeWorkDirectoriesCommand(const QStringList &paths) const {
+    // "--": a path can never be taken for an option.
+    return m_privilegeHelper.wrap(QStringLiteral("rm"), QStringList{QStringLiteral("-rf"), QStringLiteral("--")} + paths);
+}
+
+bool CruxAdapter::removeWorkDirectories(const QString &workRoot, const QStringList &paths) {
+    if (m_processRunner->isRunning()) {
+        emit outputReceived(QStringLiteral("[octoCRUX] Error: Another process is already running"), true);
+        return false;
+    }
+    for (const QString &path : paths) {
+        if (!WorkDirCleanup::isRemovableWorkDir(workRoot, path)) {
+            emit outputReceived(QStringLiteral("[octoCRUX] Error: refusing to remove '%1': not a leftover "
+                                               "pkgmk work directory under %2").arg(path, workRoot), true);
+            return false;
+        }
+    }
+    if (paths.isEmpty() || WorkDirCleanup::isPackageToolRunning()) {
+        emit outputReceived(QStringLiteral("[octoCRUX] Error: not removing work directories while a "
+                                           "package tool is running"), true);
+        return false;
+    }
+    m_cancellationRequested = false;
+    m_pendingOperations.clear();
+    const QString description = QStringLiteral("Removing leftover work directories");
+    emit progressChanged(1, 1, description);
+    emit outputReceived(QStringLiteral("[octoCRUX] %1: %2").arg(description, paths.join(QStringLiteral(", "))), false);
+
+    const QStringList wrappedCmd = removeWorkDirectoriesCommand(paths);
+    if (!m_processRunner->startProcess(wrappedCmd.first(), wrappedCmd.mid(1))) {
+        const QString err = QStringLiteral("Failed to start '%1'").arg(wrappedCmd.first());
         emit outputReceived(QStringLiteral("[octoCRUX] Error: %1").arg(err), true);
         emit operationFinished(-1, OperationErrorKind::GeneralError, err);
         return false;

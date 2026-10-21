@@ -16,7 +16,9 @@
 #include <QRadioButton>
 #include <QGroupBox>
 #include <functional>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QTextStream>
 #include <QTableView>
 #include <QTabWidget>
@@ -30,6 +32,10 @@
 #include "ui/transaction_preview_dialog.h"
 #include "ui/settings_dialog.h"
 #include "backend/crux_process_runner.h"
+#include "core/work_dir_cleanup.h"
+
+#include <QProcess>
+#include <unistd.h>
 #include "core/printf_parser.h"
 
 using namespace OctoCRUX;
@@ -87,6 +93,8 @@ private slots:
     void testSettingsChangeHelperAndCancelGrace();
     void testPasswordPromptShowsWaitingInStatusBar();
     void testWaitingHintRestoresThePhase();
+    void testCancelOffersToRemoveLeftoverWorkDir();
+    void testLeftoverWorkDirKeptWhenDeclined();
 
 private:
     QString readFile(const QString &filePath);
@@ -104,6 +112,7 @@ private:
     QPointer<QTimer> onNextModal(const std::function<void(QWidget *)> &fn);
 
     std::unique_ptr<QTemporaryDir> m_fakeBin;
+    QTemporaryDir m_emptyWorkRoot;
     QByteArray m_savedPath;
     QString m_probeLog;
 
@@ -147,6 +156,9 @@ void TestMainWindow::initTestCase() {
     m_adapter->setRootPrefix(m_sourceDir + QStringLiteral("/tests/fixtures/crux3.8_run2/files"));
 
     m_window = std::make_unique<MainWindow>(m_adapter);
+    // Never the host's /usr/ports/work: a Cancel in any test would otherwise find
+    // real leftovers (root-owned, so never removable here, but offered in a dialog).
+    m_window->setWorkRootOverride(m_emptyWorkRoot.path());
 }
 
 void TestMainWindow::testInitialPopulationAndCounts() {
@@ -422,6 +434,116 @@ void TestMainWindow::testWaitingHintRestoresThePhase() {
     emit m_adapter->waitingChanged(QString());
     QCOMPARE(phase->text(), QStringLiteral("Locking x"));
     emit m_adapter->operationFinished(0, OperationErrorKind::None, QStringLiteral("ok"));
+}
+
+namespace {
+// A pkgmk work directory as a cancelled build leaves it.
+QString makeLeftover(const QString &root, const QString &name) {
+    QDir(root).mkpath(name + QStringLiteral("/pkg"));
+    QDir(root).mkpath(name + QStringLiteral("/src"));
+    QFile f(QDir(root).filePath(name + QStringLiteral("/src/payload")));
+    if (f.open(QIODevice::WriteOnly)) f.write(QByteArray(2048, 'x'));
+    return QDir(root).filePath(name);
+}
+} // namespace
+
+void TestMainWindow::testCancelOffersToRemoveLeftoverWorkDir() {
+    // Found before PATH changes: a real sleep started as "pkgmk" (comm = pkgmk)
+    // stands for a cancelled tree that has not ended yet.
+    const QString realSleep = QStandardPaths::findExecutable(QStringLiteral("sleep"));
+    QVERIFY(!realSleep.isEmpty());
+    QVERIFY2(!WorkDirCleanup::isPackageToolRunning(), "a real package tool is running; the test cannot tell it apart");
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    QTemporaryDir work;
+    QProcess fakePkgmk;
+    auto restore = qScopeGuard([&]() {
+        fakePkgmk.kill();
+        fakePkgmk.waitForFinished(2000);
+        removeFakeTools();
+        m_adapter->setPrivilegeHelperType(PrivilegeHelperType::None);
+        m_window->setWorkRootOverride(m_emptyWorkRoot.path());
+        WorkDirCleanup::setRequiredOwnerUidForTesting(0);
+    });
+    const QString fakeSudo = m_fakeBin->filePath(QStringLiteral("sudo"));
+    QVERIFY(QFile::link(m_sourceDir + QStringLiteral("/tests/scripts/fake_sudo.sh"), fakeSudo));
+    QVERIFY(QFile::link(realSleep, m_fakeBin->filePath(QStringLiteral("pkgmk"))));
+    QVERIFY2(QStandardPaths::findExecutable(QStringLiteral("sudo")) == fakeSudo,
+             "fake sudo not first in PATH; refusing to remove anything");
+    m_adapter->setPrivilegeHelperType(PrivilegeHelperType::Sudo);
+    WorkDirCleanup::setRequiredOwnerUidForTesting(getuid()); // the test's directories are not root's
+    m_window->setWorkRootOverride(work.path());
+    const QString leftover = makeLeftover(work.path(), QStringLiteral("octo-cancel-test"));
+    QDir(work.path()).mkpath(QStringLiteral("not-a-work-dir")); // no pkg/ src/: never offered
+
+    fakePkgmk.start(m_fakeBin->filePath(QStringLiteral("pkgmk")), {QStringLiteral("2")});
+    QVERIFY(fakePkgmk.waitForStarted());
+    QTRY_VERIFY_WITH_TIMEOUT(WorkDirCleanup::isPackageToolRunning(), 2000);
+
+    QString offerText;
+    bool cancelIsDefault = false;
+    QPointer<QTimer> watcher = onNextModal([&](QWidget *w) {
+        auto *box = qobject_cast<QMessageBox*>(w);
+        if (!box || box->objectName() != QLatin1String("workDirCleanupMessage")) {
+            if (auto *d = qobject_cast<QDialog*>(w)) d->reject();
+            return;
+        }
+        offerText = box->text();
+        cancelIsDefault = box->defaultButton() && box->defaultButton()->text() != QLatin1String("Remove");
+        for (QAbstractButton *b : box->buttons()) {
+            if (b->text() == QLatin1String("Remove")) b->click();
+        }
+    });
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+    emit m_adapter->progressChanged(1, 1, QStringLiteral("Installing octo-cancel-test"));
+    emit m_adapter->operationFinished(1, OperationErrorKind::Cancelled, QStringLiteral("cancelled"));
+
+    // While "pkgmk" lives (2 s), nothing is offered.
+    QTest::qWait(1200);
+    QVERIFY2(offerText.isEmpty(), "offered while a package tool was still running");
+    QVERIFY(fakePkgmk.waitForFinished(3000));
+
+    // Then the offer, Cancel as default, and the removal through the helper.
+    QTRY_VERIFY_WITH_TIMEOUT(!offerText.isEmpty(), 3000);
+    QVERIFY(cancelIsDefault);
+    QVERIFY(offerText.contains(leftover));
+    QVERIFY(!offerText.contains(QStringLiteral("not-a-work-dir")));
+    QVERIFY(offerText.contains(QStringLiteral("sudo rm -rf -- ") + leftover));
+    QTRY_VERIFY_WITH_TIMEOUT(spyFinished.count() >= 2, 5000);
+    QCOMPARE(spyFinished.last().at(1).value<OperationErrorKind>(), OperationErrorKind::None);
+    QVERIFY(!QFileInfo::exists(leftover));
+    QVERIFY(QFileInfo::exists(QDir(work.path()).filePath(QStringLiteral("not-a-work-dir"))));
+    QVERIFY(probeLines().contains(QStringLiteral("sudo rm -rf -- ") + leftover));
+    QVERIFY(m_window->outputLogEdit()->toPlainText().contains(
+        QStringLiteral("[octoCRUX] A cancelled build left the work directory ") + leftover));
+    if (watcher) watcher->stop();
+}
+
+void TestMainWindow::testLeftoverWorkDirKeptWhenDeclined() {
+    QVERIFY2(!WorkDirCleanup::isPackageToolRunning(), "a real package tool is running; the test cannot tell it apart");
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    QTemporaryDir work;
+    auto restore = qScopeGuard([&]() {
+        removeFakeTools();
+        m_window->setWorkRootOverride(m_emptyWorkRoot.path());
+        WorkDirCleanup::setRequiredOwnerUidForTesting(0);
+    });
+    WorkDirCleanup::setRequiredOwnerUidForTesting(getuid());
+    m_window->setWorkRootOverride(work.path());
+    const QString leftover = makeLeftover(work.path(), QStringLiteral("zsh"));
+
+    bool offered = false;
+    onNextModal([&](QWidget *w) {
+        auto *box = qobject_cast<QMessageBox*>(w);
+        offered = box && box->objectName() == QLatin1String("workDirCleanupMessage");
+        if (auto *d = qobject_cast<QDialog*>(w)) d->reject(); // Esc: the default, Cancel
+    });
+    emit m_adapter->progressChanged(1, 1, QStringLiteral("Installing zsh"));
+    emit m_adapter->operationFinished(1, OperationErrorKind::Cancelled, QStringLiteral("cancelled"));
+    QTRY_VERIFY_WITH_TIMEOUT(offered, 3000);
+    QTRY_VERIFY_WITH_TIMEOUT(m_window->outputLogEdit()->toPlainText().contains(
+        QStringLiteral("[octoCRUX] Leftover work directories kept.")), 2000);
+    QVERIFY(QFileInfo::exists(leftover));
+    QVERIFY(probeLines().isEmpty()); // no process started
 }
 
 bool TestMainWindow::installFakeTools() {

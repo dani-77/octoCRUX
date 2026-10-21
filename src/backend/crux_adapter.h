@@ -75,6 +75,8 @@ public:
     bool lockPort(const QString &portName) override;
     bool unlockPort(const QString &portName) override;
     void cancelActiveOperation() override;
+    QStringList removeWorkDirectoriesCommand(const QStringList &paths) const override;
+    bool removeWorkDirectories(const QString &workRoot, const QStringList &paths) override;
 
 private:
     struct BatchedOperation {
