@@ -617,6 +617,8 @@ Details in OPEN_QUESTIONS 2.15:
 - criu and elfutils failed with footprint mismatches (NEW files only).
 - Cancel during the linux-firmware download stopped the whole root tree; nothing was installed; the Output tab showed "Operation was cancelled by user".
 - Still open: Cancel during compilation. (The status bar overlap was fixed in `adf9c14`.)
+- 2026-10-21 ~01:35: first real Upgrade All (6 ports). elfutils failed the footprint check (NEW only), OctoCRUX offered "Retry with -in", and the retry installed it. Outdated 10 -> 4 (only the locked ones).
+- 2026-10-21 07:17: Cancel during a zsh compilation (`configure` -> `gcc` as root) stopped the whole tree within ~1 s, with no orphans (test 2.10.3). The work dir was left, and a SIGPIPE hypothesis is open.
 - 2026-10-21: criu upgraded with a `-in` exception (first real exception, verified from the Output); qt-sudo's prompt was suppressed by a later `NOPASSWD` sudoers rule (owner experiment); cancelled and wrong-password authentication paths recorded and turned into a fixture; cancelled authentication now reports `AuthenticationError`; the rejected-config alert lists only new files.
 
 ### 7.7 Next Step: Phase 5 — System Tray Daemon (`octocrux-notifier`) & Settings
