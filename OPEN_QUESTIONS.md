@@ -217,7 +217,25 @@ In accordance with [RESEARCH.md](RESEARCH.md) and the SCOFS protocol in [AGENTS.
   5. OctoCRUX's Output tab showed `Operation was cancelled by user` **[owner-reported]**. Whether the "still running" warning appeared is not recorded.
   6. **Limits:** Cancel during **compilation** (make/gcc) is still untested. The first sample was ~34 s after Cancel, so neither the exit latency nor which process relayed the signal is known. Verified only for qt-sudo 2.4.1 with the sudo backend.
 * **UI defect [owner-reported]:** in the status bar the `Total: 2306 ports | ...` summary overlaps other status bar text and is hard to read. Cause not investigated yet.
-* **Read-only GUI checks [owner-reported ✓]:** status bar content (apart from the overlap above), status filters, `gtk3` detail tabs, and Remove disabled for `glibc`.
+* **Read-only GUI checks [owner-reported ✓]:** status bar content (apart from the overlap above), status filters, `gtk3` detail tabs, Remove disabled for `glibc`, and the collection filter (it shows only the ports of the selected, winning collection).
+* **Follow-up fixes (2026-10-20/21) [owner-reported ✓]:** status bar labels no longer overlap; rejected paths are shown one per line; Upgrade and Upgrade All are separate buttons.
+* **First real build check exception: criu with `-in` (2026-10-21 ~00:37) [verified]:**
+  1. The owner unticked only "Verify footprint" (default choice `-in`) and ran Upgrade.
+  2. The Output showed `=======> New files found:` with the same two NEW entries as on 2026-10-20 (`usr/include/compel/plugins/std/syscall-64.h`, `syscall-codes-64.h`), then `Building '/usr/ports/packages/criu#4.3-1.pkg.tar.zst' succeeded.`, `prt-get: updating criu from 4.2.1-1 to 4.3-1` and `prt-get: updated successfully`.
+  3. That message exists only in pkgmk's `PKGMK_IGNORE_NEW=yes` branch, so `--margs=-in` reached pkgmk.
+  4. After the run, `pkginfo -i` shows `criu 4.3-1`, the package was written at 00:37:25, `criu.log` was removed (`rmlog_on_success`), and the outdated count went 11 -> 10.
+  5. The Information checkbox was ticked again after the run [owner-reported].
+  6. The port's `.footprint` still lacks the two files, so the next build of criu needs `-in` again until the port is updated.
+* **Why qt-sudo did not ask for a password [verified by owner experiment]:**
+  1. `sudo -l` lists `(ALL : ALL) ALL` and, after it, `(ALL) NOPASSWD: ALL`. sudoers applies the last matching entry, so NOPASSWD won and sudo never asked; qt-sudo had no prompt to show.
+  2. With the NOPASSWD line commented out, qt-sudo's password dialog appeared at once, one per elevated invocation (Lock/Unlock of criu) [owner-reported].
+  3. **[open]** The owner reports that sudo in a terminal asked for a password even while NOPASSWD was active. This was not reproduced. A rule in `/etc/sudoers.d` (unreadable to the desktop user) is a possible explanation.
+  4. **Consequence (unchanged):** the OctoCRUX preview dialog is the only gate that is guaranteed; the helper's prompt depends on the local sudoers.
+* **qt-sudo authentication paths [verified]** (fixture `tests/fixtures/crux3.8/qtsudo-auth/`, the owner's Output tab):
+  1. Password dialog **cancelled**: qt-sudo shows its own error window ("Falha no processo dependente sudo! sudo: a password is required") and exits 1 when it is closed. Until then OctoCRUX correctly stays busy, because the child is alive. Nothing changed (criu not locked).
+  2. **Two wrong passwords**, then the right one: sudo prints `Sorry, try again.`, qt-sudo asks again ("Tentativa #2") within the same process, and the run succeeds.
+  3. sudo's `Password: ` prompt text reaches the Output tab through qt-sudo.
+  4. OctoCRUX now reports case 1 as `AuthenticationError` ("nothing was run as root and no changes were made") instead of "General error". sudo's message after too many wrong attempts was not observed and is not matched.
 
 ## 3. Exit Codes & Command Quirks Reference for Parsers
 

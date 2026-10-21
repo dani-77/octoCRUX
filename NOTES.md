@@ -616,7 +616,8 @@ Details in OPEN_QUESTIONS 2.15:
 - Upgrade with nothing selected: the preview dialog appeared and the owner pressed Apply. No qt-sudo password prompt appeared (sudo credential cache, hypothesis), so the preview is the only guaranteed gate.
 - criu and elfutils failed with footprint mismatches (NEW files only).
 - Cancel during the linux-firmware download stopped the whole root tree; nothing was installed; the Output tab showed "Operation was cancelled by user".
-- Still open: Cancel during compilation; the status bar text overlap.
+- Still open: Cancel during compilation. (The status bar overlap was fixed in `adf9c14`.)
+- 2026-10-21: criu upgraded with a `-in` exception (first real exception, verified from the Output); qt-sudo's prompt was suppressed by a later `NOPASSWD` sudoers rule (owner experiment); cancelled and wrong-password authentication paths recorded and turned into a fixture; cancelled authentication now reports `AuthenticationError`; the rejected-config alert lists only new files.
 
 ### 7.7 Next Step: Phase 5 — System Tray Daemon (`octocrux-notifier`) & Settings
 1. **System Tray Daemon (`octocrux-notifier`):**
