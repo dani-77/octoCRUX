@@ -24,6 +24,7 @@ private slots:
     void testExtractSummary();
     void testExtractFootprintFailures();
     void testRealQtSudoAuthentication();
+    void testUnclassifiedFailureShowsHelperMessage();
 
 private:
     static QString fixture(const QString &name);
@@ -195,6 +196,21 @@ void TestBuildLogAnalyzer::testRealQtSudoAuthentication() {
     QCOMPARE(BuildLogAnalyzer::classifyLog(ops[3], 0), OperationErrorKind::None);
     // A real build failure log is never mistaken for an authentication failure.
     QCOMPARE(BuildLogAnalyzer::classifyLog(fixture(QStringLiteral("md5")), 1), OperationErrorKind::ChecksumError);
+}
+
+void TestBuildLogAnalyzer::testUnclassifiedFailureShowsHelperMessage() {
+    // Helper output of the owner's Lock of the uninstalled a2ps (2026-10-21,
+    // prt-get 5.19.9 through qt-sudo, exit code 255), transcribed from the Output tab.
+    const QString log = QStringLiteral("Password: \nPackage 'a2ps' not found\n");
+    QCOMPARE(BuildLogAnalyzer::classifyLog(log, 255), OperationErrorKind::GeneralError);
+    QCOMPARE(BuildLogAnalyzer::extractSummary(log, OperationErrorKind::GeneralError),
+             QStringLiteral("Operation failed: Package 'a2ps' not found"));
+    // A failing build still names the port.
+    QVERIFY(BuildLogAnalyzer::extractSummary(fixture(QStringLiteral("interrupt")), OperationErrorKind::GeneralError)
+                .contains(QStringLiteral("octo-interrupt")));
+    // Only sudo prompts: nothing better to say.
+    QCOMPARE(BuildLogAnalyzer::extractSummary(QStringLiteral("Password: \nSorry, try again.\n"), OperationErrorKind::GeneralError),
+             QStringLiteral("Operation failed with error"));
 }
 
 QTEST_MAIN(TestBuildLogAnalyzer)

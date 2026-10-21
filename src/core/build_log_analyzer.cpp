@@ -191,6 +191,18 @@ QString BuildLogAnalyzer::extractSummary(const QString &logOutput, OperationErro
         if (!failing.isEmpty()) {
             return QStringLiteral("Operation failed while processing port '%1'").arg(failing);
         }
+        // Otherwise the helper's last message usually names the cause, e.g. prt-get's
+        // "Package 'a2ps' not found" for a lock of an uninstalled package. sudo's
+        // prompt and retry lines are not causes.
+        const QStringList lines = logOutput.split(QLatin1Char('\n'));
+        for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
+            const QString line = it->trimmed();
+            if (line.isEmpty() || line == QLatin1String("Password:")
+                || line == QLatin1String("Sorry, try again.")) {
+                continue;
+            }
+            return QStringLiteral("Operation failed: %1").arg(line.left(200));
+        }
         return QStringLiteral("Operation failed with error");
     }
     }
