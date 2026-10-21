@@ -12,7 +12,7 @@ int main(int argc, char *argv[]) {
     app.setApplicationName(QStringLiteral("octoCRUX"));
     app.setApplicationDisplayName(QStringLiteral("OctoCRUX — CRUX Linux Package Manager"));
     app.setOrganizationName(QStringLiteral("OctoCRUX"));
-    app.setApplicationVersion(QStringLiteral("0.1.0"));
+    app.setApplicationVersion(QStringLiteral(OCTOCRUX_VERSION));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("OctoCRUX, a Qt package manager for CRUX"));

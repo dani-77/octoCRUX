@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- OctoCRUX application icon: a package box on a rounded square. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="#2e7d32"/>
+  <path d="M32 12 L52 22 L52 44 L32 54 L12 44 L12 22 Z" fill="#ffffff" fill-opacity="0.95"/>
+  <path d="M32 12 L52 22 L32 32 L12 22 Z" fill="#c8e6c9"/>
+  <path d="M32 32 L32 54" stroke="#2e7d32" stroke-width="3"/>
+  <path d="M12 22 L32 32 L52 22" fill="none" stroke="#2e7d32" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M22 17 L42 27 L42 34" fill="none" stroke="#e65100" stroke-width="3" stroke-linecap="round"/>
+</svg>

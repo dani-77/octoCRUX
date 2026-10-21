@@ -28,7 +28,7 @@ public:
                           PrivilegeHelperType helper,
                           QWidget *parent = nullptr);
 
-    /** Where the polkit action definition to install comes from (source tree or prefix). */
+    /** The polkit action definition to install when it is missing (build tree only). */
     static QString policySourcePath();
 
 protected:

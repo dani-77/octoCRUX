@@ -96,12 +96,8 @@ NotifierOptionsDialog::NotifierOptionsDialog(std::shared_ptr<OctoCruxSettings> s
 }
 
 QString NotifierOptionsDialog::policySourcePath() {
-    // Installed layout first (<prefix>/bin/../share/octocrux/polkit), then the source tree.
-    const QString installed = QDir(QCoreApplication::applicationDirPath())
-        .filePath(QStringLiteral("../share/octocrux/polkit/org.octocrux.ports-sync.policy"));
-    if (QFileInfo::exists(installed)) {
-        return QDir::cleanPath(installed);
-    }
+    // A packaged OctoCRUX installs the action itself (share/polkit-1/actions), so the
+    // dialog only needs a source when running from a build tree.
 #ifdef OCTOCRUX_SOURCE_POLICY
     if (QFileInfo::exists(QStringLiteral(OCTOCRUX_SOURCE_POLICY))) {
         return QStringLiteral(OCTOCRUX_SOURCE_POLICY);

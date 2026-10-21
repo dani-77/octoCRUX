@@ -5,6 +5,7 @@
 #include "notifier_tray.h"
 
 #include <QApplication>
+#include <QCommandLineParser>
 #include <QNetworkInterface>
 #include <QSystemTrayIcon>
 #include <QTextStream>
@@ -16,8 +17,16 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("octocrux-notifier"));
     app.setOrganizationName(QStringLiteral("OctoCRUX"));
-    app.setApplicationVersion(QStringLiteral("0.1.0"));
+    app.setApplicationVersion(QStringLiteral(OCTOCRUX_VERSION));
     app.setQuitOnLastWindowClosed(false);
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription(QStringLiteral(
+        "OctoCRUX tray notifier: shows available updates (read-only); syncs the ports tree "
+        "only when asked or on an opt-in schedule."));
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.process(app);
 
     auto backend = std::make_shared<CruxAdapter>();
     backend->setPrivilegeHelperType(PrivilegeHelper::probeAvailableHelper());

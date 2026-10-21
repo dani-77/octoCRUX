@@ -68,6 +68,9 @@ target_link_libraries(octocrux_core PUBLIC
     Qt6::Widgets
 )
 
+# Single source of the version shown by both executables (--version).
+target_compile_definitions(octocrux_core PUBLIC OCTOCRUX_VERSION="${PROJECT_VERSION}")
+
 target_include_directories(octocrux_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -121,3 +124,34 @@ target_link_libraries(octocrux_live_check PRIVATE
     octocrux_core
     Qt6::Core
 )
+
+# Installation (Phase 5a). Paths follow GNUInstallDirs; the CRUX port uses
+# CMAKE_INSTALL_PREFIX=/usr. Tests and octocrux_live_check (a developer
+# diagnostic) are not installed.
+include(GNUInstallDirs)
+
+install(TARGETS octocrux octocrux-notifier
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(FILES data/octocrux.desktop data/octocrux-notifier.desktop
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+)
+
+install(FILES data/icons/octocrux.svg
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+)
+
+# The polkit action only defines org.octocrux.ports-sync (auth_admin by itself);
+# the password-free rule is installed per user, on opt-in, by the notifier.
+install(FILES contrib/polkit/org.octocrux.ports-sync.policy
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/actions
+)
+
+# CRUX packages carry no documentation; the port turns this off.
+option(OCTOCRUX_INSTALL_DOCS "Install README and the sudoers example under the doc directory" ON)
+if(OCTOCRUX_INSTALL_DOCS)
+    install(FILES README.md contrib/sudoers.d/octocrux-ports-sync.example
+        DESTINATION ${CMAKE_INSTALL_DOCDIR}
+    )
+endif()

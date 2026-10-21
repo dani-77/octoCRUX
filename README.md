@@ -46,7 +46,7 @@ OctoCRUX provides a clean, responsive desktop interface for CRUX package managem
 - Linux operating system (CRUX 3.8 target, Void Linux development host)
 - C++17 compliant compiler (GCC 14+ or Clang 18+)
 - CMake 3.22+
-- Qt 6 (Core, Widgets, Test)
+- Qt 6 (Core, Widgets, Network; Test for the test suite)
 - CRUX userland tools (`prt-get`, `pkgutils`, `ports`) for production execution
 
 ### Compiling
@@ -62,8 +62,21 @@ cmake --build build -j$(nproc)
 ```
 
 The resulting binaries will be:
-- `build/octocrux`: Main graphical application.
-- `build/octocrux_live_check`: Standalone diagnostic tool for bare-metal verification.
+- `build/octocrux`: Main graphical application (`--upgrade-all` opens the Upgrade All preview).
+- `build/octocrux-notifier`: System tray update notifier.
+- `build/octocrux_live_check`: Standalone diagnostic tool for bare-metal verification (not installed).
+
+### Installing
+
+On CRUX, use the port in [`packaging/crux/`](packaging/crux/README.md), which builds from a release tag. To install from a checkout instead:
+
+```bash
+cmake -B build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+cmake --build build -j$(nproc)
+sudo cmake --install build
+```
+
+This installs both binaries, their desktop entries, the icon and the polkit action `org.octocrux.ports-sync`. With `-DOCTOCRUX_INSTALL_DOCS=ON` (the default) it also installs the README and the sudoers example; the CRUX port turns that off.
 
 ---
 

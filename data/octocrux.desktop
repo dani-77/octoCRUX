@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OctoCRUX
+GenericName=Package Manager
+Comment=Browse, install, upgrade and remove CRUX ports and packages
+Exec=octocrux
+Icon=octocrux
+Terminal=false
+Categories=System;PackageManager;
+Keywords=crux;ports;prt-get;pkgmk;package;
+StartupNotify=true
