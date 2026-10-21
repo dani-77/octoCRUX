@@ -25,11 +25,12 @@ opt-in, under `/etc/polkit-1/rules.d/`.
 
 ## Publishing a release (owner)
 
-1. Tag the release on GitHub so the source URL exists: `git tag v0.1.0 && git push origin v0.1.0`.
-   The archive's top directory is then `octoCRUX-0.1.0`, which the Pkgfile expects.
+1. Set the same version in `CMakeLists.txt` (`project(... VERSION x.y.z)`) and the Pkgfile, then tag that commit on GitHub so the source URL exists: `git tag -a vx.y.z -m "OctoCRUX x.y.z" && git push origin vx.y.z`.
+   The archive's top directory is then `octoCRUX-x.y.z`, which the Pkgfile expects.
 2. Copy `octocrux/` into `/usr/ports/d77crux/`.
 3. In `/usr/ports/d77crux/octocrux`, as root: `pkgmk -d -uf` (download, build, write
-   `.footprint`), then `pkgmk -us` (signature with the collection's key).
+   `.footprint`), `pkgmk -um` (`.md5sum`), then `pkgmk -us` (signature with the collection's key).
+   In the d77crux repository, run `httpup-repgen` so `REPO` lists the new port, then commit and push.
 4. Install with `prt-get depinst octocrux`, or from OctoCRUX itself.
 
 **If you turned on automatic sync with a build-tree notifier before installing
