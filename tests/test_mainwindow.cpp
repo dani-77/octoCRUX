@@ -64,6 +64,7 @@ private slots:
     void testStatusBarLabelsDoNotOverlap();
     void testRejectedConfigsAlertIsReadable();
     void testRejectedAlertListsOnlyNewFiles();
+    void testClickInColouredLineDoesNotColourNewLines();
     void testCancelledOperationIsNotReportedAsFailure();
     void testTransientOutputReplacesLastLine();
     void testPreviewDescribe();
@@ -426,6 +427,43 @@ void TestMainWindow::testRejectedAlertListsOnlyNewFiles() {
     added = addedBy({r1});
     QVERIFY(added.contains(QStringLiteral("[octoCRUX ALERT]")));
     QVERIFY(added.contains(r1));
+}
+
+void TestMainWindow::testClickInColouredLineDoesNotColourNewLines() {
+    // Owner, 2026-10-21: after clicking inside the orange rejected-config alert, every
+    // new plain line came out orange and bold. Reproduced by placing the text cursor
+    // inside the alert, as the click does.
+    QPlainTextEdit *log = m_window->outputLogEdit();
+    emit m_adapter->rejectedConfigsDetected({QStringLiteral("/var/lib/pkg/rejected/etc/grub.d/30_uefi-firmware")});
+    const int at = log->toPlainText().lastIndexOf(QStringLiteral("30_uefi-firmware"));
+    QVERIFY(at > 0);
+    QTextCursor inside(log->document());
+    inside.setPosition(at + 3);
+    log->setTextCursor(inside);
+    QCOMPARE(log->textCursor().charFormat().foreground().color(), QColor(QStringLiteral("#ffa726")));
+
+    auto lastLineFormat = [log]() {
+        const QTextBlock block = log->document()->lastBlock();
+        return block.begin().fragment().charFormat();
+    };
+    emit m_adapter->outputReceived(QStringLiteral("[octoCRUX] Locking zstd"), false);
+    QCOMPARE(log->document()->lastBlock().text(), QStringLiteral("[octoCRUX] Locking zstd"));
+    QTextCharFormat f = lastLineFormat();
+    QVERIFY2(f.foreground().color() != QColor(QStringLiteral("#ffa726")), qPrintable(f.foreground().color().name()));
+    QVERIFY(f.fontWeight() != QFont::Bold);
+
+    // The other plain-text paths: the operation summary and a '\r' progress line.
+    emit m_adapter->progressChanged(1, 1, QStringLiteral("Locking zstd"));
+    emit m_adapter->operationFinished(0, OperationErrorKind::None, QStringLiteral("ok"));
+    QTextBlock b = log->document()->lastBlock();
+    while (b.isValid() && b.text().isEmpty()) b = b.previous();
+    QVERIFY(b.text().contains(QStringLiteral("finished successfully")));
+    QVERIFY(b.begin().fragment().charFormat().foreground().color() != QColor(QStringLiteral("#ffa726")));
+    log->setTextCursor(inside);
+    emit m_adapter->transientOutputReceived(QStringLiteral(" 10 548.0M"));
+    QVERIFY(lastLineFormat().foreground().color() != QColor(QStringLiteral("#ffa726")));
+    emit m_adapter->outputReceived(QStringLiteral("100 548.0M"), false);
+    QVERIFY(lastLineFormat().foreground().color() != QColor(QStringLiteral("#ffa726")));
 }
 
 void TestMainWindow::testCancelledOperationIsNotReportedAsFailure() {

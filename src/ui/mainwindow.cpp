@@ -30,6 +30,7 @@
 #include <QCloseEvent>
 #include <QTimer>
 #include <QTextCursor>
+#include <QTextCharFormat>
 #include <QPushButton>
 #include <QCheckBox>
 #include <QRadioButton>
@@ -37,6 +38,33 @@
 #include <QButtonGroup>
 
 namespace OctoCRUX {
+
+namespace {
+
+// QPlainTextEdit appends with the character format at the widget's text cursor.
+// After a click inside a coloured line (e.g. the orange rejected-config alert)
+// every later line inherited that colour (owner, 2026-10-21). Reset the format
+// before each append so new output never depends on where the user clicked.
+void appendOutputPlain(QPlainTextEdit *edit, const QString &text) {
+    edit->setCurrentCharFormat(QTextCharFormat());
+    edit->appendPlainText(text);
+}
+
+void appendOutputHtml(QPlainTextEdit *edit, const QString &html) {
+    edit->setCurrentCharFormat(QTextCharFormat());
+    edit->appendHtml(html);
+}
+
+// Replaces the text of the last block of the Output log, keeping the block.
+void replaceLastLine(QPlainTextEdit *edit, const QString &text) {
+    QTextCursor cursor(edit->document());
+    cursor.movePosition(QTextCursor::End);
+    cursor.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    cursor.insertText(text, QTextCharFormat());
+}
+
+} // namespace
 
 MainWindow::MainWindow(std::shared_ptr<ICruxBackend> backend, QWidget *parent)
     : QMainWindow(parent)
@@ -395,7 +423,7 @@ void MainWindow::checkPrivilegeHelper() {
         );
     } else if (helper == PrivilegeHelperType::None) {
         if (m_outputLogEdit) {
-            m_outputLogEdit->appendPlainText(QStringLiteral("[octoCRUX] Warning: No privilege elevation helper detected (qt-sudo/sudo/doas/su). Package mutations will run unprivileged."));
+            appendOutputPlain(m_outputLogEdit, QStringLiteral("[octoCRUX] Warning: No privilege elevation helper detected (qt-sudo/sudo/doas/su). Package mutations will run unprivileged."));
         }
     }
 }
@@ -507,16 +535,6 @@ void MainWindow::onPackageSelectionChanged(const QItemSelection &selected, const
     updateActionButtons();
 }
 
-namespace {
-// Replaces the text of the last block of the Output log, keeping the block.
-void replaceLastLine(QPlainTextEdit *edit, const QString &text) {
-    QTextCursor cursor(edit->document());
-    cursor.movePosition(QTextCursor::End);
-    cursor.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
-    cursor.removeSelectedText();
-    cursor.insertText(text);
-}
-} // namespace
 
 void MainWindow::onBackendOutputReceived(const QString &text, bool isError) {
     if (m_outputLogEdit) {
@@ -525,9 +543,9 @@ void MainWindow::onBackendOutputReceived(const QString &text, bool isError) {
             replaceLastLine(m_outputLogEdit, text);
             m_lastOutputLineTransient = false;
         } else if (isError) {
-            m_outputLogEdit->appendHtml(QStringLiteral("<span style='color:#ef5350;'>%1</span>").arg(text.toHtmlEscaped()));
+            appendOutputHtml(m_outputLogEdit, QStringLiteral("<span style='color:#ef5350;'>%1</span>").arg(text.toHtmlEscaped()));
         } else {
-            m_outputLogEdit->appendPlainText(text);
+            appendOutputPlain(m_outputLogEdit, text);
         }
         m_outputLogEdit->verticalScrollBar()->setValue(m_outputLogEdit->verticalScrollBar()->maximum());
     }
@@ -546,7 +564,7 @@ void MainWindow::onBackendTransientOutput(const QString &text) {
     if (m_lastOutputLineTransient) {
         replaceLastLine(m_outputLogEdit, text);
     } else {
-        m_outputLogEdit->appendPlainText(text);
+        appendOutputPlain(m_outputLogEdit, text);
         m_lastOutputLineTransient = true;
     }
     m_outputLogEdit->verticalScrollBar()->setValue(m_outputLogEdit->verticalScrollBar()->maximum());
@@ -609,7 +627,7 @@ void MainWindow::onOperationFinished(int exitCode, OperationErrorKind errorKind,
             statusMsg = QStringLiteral("\n[octoCRUX] Operation failed (exit code %1, error: %2): %3\n")
                 .arg(exitCode).arg(BuildLogAnalyzer::errorKindToString(errorKind)).arg(summary);
         }
-        m_outputLogEdit->appendPlainText(statusMsg);
+        appendOutputPlain(m_outputLogEdit, statusMsg);
     }
 
     if (exitCode == 0) {
@@ -634,7 +652,7 @@ void MainWindow::handleFootprintFailures(const QString &runLog) {
         }
     }
     if (!withMissing.isEmpty() && m_outputLogEdit) {
-        m_outputLogEdit->appendPlainText(QStringLiteral(
+        appendOutputPlain(m_outputLogEdit, QStringLiteral(
             "[octoCRUX] Footprint mismatch with MISSING files in: %1. Ignoring only new files (-in) "
             "cannot fix this. Review the build log; if the package is still correct, untick "
             "\"Verify footprint\" and choose \"Ignore all differences (-if)\" in its Information tab.")
@@ -717,7 +735,7 @@ void MainWindow::onRejectedConfigsDetected(const QStringList &rejectedFiles) {
 
     if (newFiles.isEmpty()) {
         if (m_outputLogEdit) {
-            m_outputLogEdit->appendPlainText(QStringLiteral(
+            appendOutputPlain(m_outputLogEdit, QStringLiteral(
                 "[octoCRUX] %1 rejected configuration file(s) still pending in /var/lib/pkg/rejected "
                 "(unchanged). Review them with rejmerge.").arg(rejectedFiles.size()));
         }
@@ -735,7 +753,7 @@ void MainWindow::onRejectedConfigsDetected(const QStringList &rejectedFiles) {
         ? QStringLiteral("<br/>(plus %1 already pending)").arg(alreadyPending)
         : QString();
     if (m_outputLogEdit) {
-        m_outputLogEdit->appendHtml(QStringLiteral(
+        appendOutputHtml(m_outputLogEdit, QStringLiteral(
             "<br/><span style='color:#ffa726; font-weight:bold;'>"
             "[octoCRUX ALERT] Rejected configuration file(s) found in /var/lib/pkg/rejected:<br/>"
             "%1%2</span><br/>"
