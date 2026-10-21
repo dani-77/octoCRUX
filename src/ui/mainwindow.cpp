@@ -601,6 +601,13 @@ void MainWindow::onOperationFinished(int exitCode, OperationErrorKind errorKind,
     }
     m_rejectedReportedThisRun = false;
     m_operationInProgress = false;
+    if (m_syncInFlight) {
+        m_syncInFlight = false;
+        if (exitCode == 0 && errorKind == OperationErrorKind::None && m_settings) {
+            m_settings->setLastSync(QDateTime::currentDateTime());
+            m_settings->sync();
+        }
+    }
     // The exceptions were for this run only: success, failure or cancel, all checks
     // are on again afterwards.
     for (const QString &port : std::as_const(m_overridesInFlight)) {
@@ -858,6 +865,7 @@ void MainWindow::onSyncPortsClicked() {
     if (m_outputLogEdit && m_tabWidget) {
         m_tabWidget->setCurrentWidget(m_outputLogEdit);
     }
+    m_syncInFlight = true;
     m_backend->syncPortsTree();
 }
 
@@ -937,6 +945,10 @@ void MainWindow::onToggleLockClicked() {
 
 void MainWindow::onCancelOperationClicked() {
     m_backend->cancelActiveOperation();
+}
+
+void MainWindow::setSettings(std::shared_ptr<OctoCruxSettings> settings) {
+    m_settings = std::move(settings);
 }
 
 bool MainWindow::runTransaction(const QString &title, TransactionPlan plan) {

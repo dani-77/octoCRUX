@@ -33,6 +33,14 @@ add_library(octocrux_core STATIC
     src/core/dependency_parser.cpp
     src/core/build_log_analyzer.h
     src/core/build_log_analyzer.cpp
+    src/core/sync_schedule.h
+    src/core/sync_schedule.cpp
+    src/core/update_summary.h
+    src/core/update_summary.cpp
+    src/core/octocrux_settings.h
+    src/core/octocrux_settings.cpp
+    src/notifier/notifier_core.h
+    src/notifier/notifier_core.cpp
     src/backend/command_runner.h
     src/backend/command_runner.cpp
     src/backend/privilege_helper.h
@@ -69,6 +77,18 @@ add_executable(octocrux
 )
 
 target_link_libraries(octocrux PRIVATE
+    octocrux_core
+    Qt6::Widgets
+)
+
+# System tray notifier: read-only update count; ports -u only when the user asks
+add_executable(octocrux-notifier
+    src/notifier/main.cpp
+    src/notifier/notifier_tray.h
+    src/notifier/notifier_tray.cpp
+)
+
+target_link_libraries(octocrux-notifier PRIVATE
     octocrux_core
     Qt6::Widgets
 )

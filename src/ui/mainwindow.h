@@ -4,6 +4,7 @@
 #include "model/package_model.h"
 #include "model/package_filter_proxy_model.h"
 #include "operations/transaction_planner.h"
+#include "core/octocrux_settings.h"
 
 #include <QMainWindow>
 #include <QItemSelection>
@@ -53,6 +54,9 @@ public:
     QPlainTextEdit* outputLogEdit() const;
 
     void checkPrivilegeHelper();
+
+    /** Shared settings; a successful Sync records its time there (read by the notifier). */
+    void setSettings(std::shared_ptr<OctoCruxSettings> settings);
 
     /** Build check exceptions chosen for the next run of a package (empty = defaults). */
     BuildCheckOverrides pendingBuildOverrides(const QString &portName) const;
@@ -198,6 +202,9 @@ private:
     // /var/lib/pkg/rejected as last reported, so the alert lists only new files.
     QSet<QString> m_knownRejected;
     bool m_rejectedReportedThisRun = false;
+
+    std::shared_ptr<OctoCruxSettings> m_settings;
+    bool m_syncInFlight = false;        // the running operation is ports -u
 };
 
 } // namespace OctoCRUX

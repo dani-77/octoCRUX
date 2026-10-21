@@ -272,6 +272,21 @@ After any transaction completes:
 
 ---
 
+### 5.5 Tray Notifier (`octocrux-notifier`, Phase 5c)
+Adapted from the OctoXBPS notifier (`notifier/mainwindow.cpp`, commit `5f1e8b2`). OctoXBPS syncs on a schedule as root with `pkexec xbps-install -Sy`, without a password through a polkit rule restricted to that exact command; it checks every 5 minutes and offers once a day / once a day at H / every N minutes / never.
+- **Read-only by default.** `NotifierCore` counts outdated packages from the backend's `prt-get printf` query (`UpdateSummary`: unlocked = what Upgrade All would update; locked counted apart). It refreshes every 5 minutes and when `/var/lib/pkg` changes (pkgadd's db, prt-get's locker), debounced by 2 s. `prt-get diff`/`printf` need no privileges; `ports -u` does.
+- **No automatic sync by default** (`SyncMode::Never`). The tray shows "Ports tree last synced N days ago" and offers "Sync ports tree now", which runs `ports -u` through the privilege helper (it may ask for a password). The time of a successful sync, from the notifier or the main window's Sync, is stored in the shared settings (`OctoCruxSettings`, `~/.config/OctoCRUX/octoCRUX.conf`).
+- **Scheduling** (`isSyncDue`, a pure function): the OctoXBPS modes with three deliberate differences.
+  - The default is Never.
+  - "Once a day at H" catches up later the same day if the machine was off at H.
+  - The minimum interval is 60 minutes.
+  The suggested mode when the user enables automatic sync is once a day, changeable in the GUI.
+- **Planned (Phase 5c, step 2):**
+  - Automatic sync runs only non-interactively. The package will install the polkit *action* for exactly `/usr/bin/ports -u`. The rule that waives the password is installed only when the user picks an automatic mode in the notifier options (one authentication), and is removed again when they choose Never. A sudoers.d example covers systems without polkit.
+  - If authentication would be needed at sync time, the notifier never pops up a dialog; it only reminds.
+- **Planned (step 3):** "Upgrade All…" opens OctoCRUX straight on the preview. An autostart `.desktop` is shipped but not enabled; each user turns it on.
+- It never installs, upgrades or removes packages.
+
 ## 6. SCOFS Validation Ladder & Test Strategy
 
 ```

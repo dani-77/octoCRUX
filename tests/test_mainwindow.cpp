@@ -73,6 +73,7 @@ private slots:
     void testUpgradePreviewGatesExecution();
     void testInstallPreviewRejectStartsNoProcess();
     void testSyncConfirmRejectStartsNoProcess();
+    void testSuccessfulSyncRecordsLastSyncForTheNotifier();
     void testBuildChecksAreKeptPerPortUntilARun();
     void testBuildChecksReachCommandAndResetAfterRun();
     void testLockAndUnlockStartTheHelper();
@@ -747,6 +748,37 @@ QRadioButton* radio(QWidget *root, const QString &prefix) {
     return nullptr;
 }
 } // namespace
+
+void TestMainWindow::testSuccessfulSyncRecordsLastSyncForTheNotifier() {
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    auto restore = qScopeGuard([this]() { removeFakeTools(); m_window->setSettings(nullptr); });
+    QTemporaryDir dir;
+    auto settings = std::make_shared<OctoCruxSettings>(dir.filePath(QStringLiteral("octoCRUX.conf")));
+    m_window->setSettings(settings);
+    QSignalSpy spyFinished(m_adapter.get(), &ICruxBackend::operationFinished);
+
+    onNextModal([&](QWidget *w) {
+        if (auto *box = qobject_cast<QMessageBox*>(w)) {
+            for (QAbstractButton *b : box->buttons()) {
+                if (b->text() == QLatin1String("Sync")) b->click();
+            }
+        } else if (auto *d = qobject_cast<QDialog*>(w)) {
+            d->reject();
+        }
+    });
+    const QDateTime before = QDateTime::currentDateTime().addSecs(-1);
+    toolButton(QStringLiteral("Sync"))->click();
+    QVERIFY(spyFinished.wait(5000));
+    QCOMPARE(probeLines(), QStringList{QStringLiteral("-u")});
+    QVERIFY(settings->lastSync().isValid());
+    QVERIFY(settings->lastSync() >= before);
+
+    // A later non-sync operation does not touch it.
+    const QDateTime recorded = settings->lastSync();
+    emit m_adapter->progressChanged(1, 1, QStringLiteral("Locking x"));
+    emit m_adapter->operationFinished(0, OperationErrorKind::None, QStringLiteral("ok"));
+    QCOMPARE(settings->lastSync(), recorded);
+}
 
 void TestMainWindow::testBuildChecksAreKeptPerPortUntilARun() {
     QWidget *info = m_window->detailTabs()->widget(0);

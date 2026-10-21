@@ -1,6 +1,7 @@
 #include "backend/crux_adapter.h"
 #include "backend/privilege_helper.h"
 #include "ui/mainwindow.h"
+#include "core/octocrux_settings.h"
 
 #include <QApplication>
 
@@ -16,6 +17,7 @@ int main(int argc, char *argv[]) {
     backend->setPrivilegeHelperType(helper);
 
     OctoCRUX::MainWindow window(backend);
+    window.setSettings(std::make_shared<OctoCRUX::OctoCruxSettings>());
     window.show();
     window.checkPrivilegeHelper();
 

@@ -622,7 +622,9 @@ Details in OPEN_QUESTIONS 2.15:
 - 2026-10-21 07:17: Cancel during a zsh compilation (`configure` -> `gcc` as root) stopped the whole tree within ~1 s, with no orphans (test 2.10.3). The work dir was left, and a SIGPIPE hypothesis is open.
 - 2026-10-21: criu upgraded with a `-in` exception (first real exception, verified from the Output); qt-sudo's prompt was suppressed by a later `NOPASSWD` sudoers rule (owner experiment); cancelled and wrong-password authentication paths recorded and turned into a fixture; cancelled authentication now reports `AuthenticationError`; the rejected-config alert lists only new files.
 
-### 7.7 Next Step: Phase 5 — System Tray Daemon (`octocrux-notifier`) & Settings
+### 7.7 Phase 5 — System Tray Notifier (`octocrux-notifier`) & Settings
+*Status 2026-10-21:* Phase 5c step 1 is done: a read-only tray notifier, manual `ports -u`, and shared settings with the sync time (ARCHITECTURE §5.5). Step 2 (automatic sync with a password-free polkit rule installed only on opt-in) and step 3 (Upgrade All from the tray, autostart file) are next. 5a (packaging: install rules, `.desktop`, d77crux `Pkgfile`) and 5b (general settings dialog) follow. Owner decisions: once a day is the suggested automatic mode, changeable in the GUI; autostart is opt-in per user.
+
 1. **System Tray Daemon (`octocrux-notifier`):**
    - Lightweight standalone background tray indicator (`QSystemTrayIcon`).
    - Periodic, **read-only** check for outdated packages against the ports tree already on disk: `prt-get printf` with `%i == diff` combined with `%l` (OPEN_QUESTIONS 2.5), never `prt-get diff`. The notifier runs unprivileged and must **not** run `ports -u`: that rewrites `/usr/ports` and needs root, so syncing stays an explicit, elevated user action (the Sync button). The check therefore only sees updates after a sync (by the user or a system cron job); how to present that is **[open]** for the Phase 5 design.

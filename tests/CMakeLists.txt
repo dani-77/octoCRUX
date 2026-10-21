@@ -191,3 +191,33 @@ add_test(NAME test_live_transaction_execution COMMAND test_live_transaction_exec
 
 # Runs a simulated build for ~36 s; excluded from routine runs with 'ctest -LE slow'
 set_tests_properties(test_live_transaction_execution PROPERTIES LABELS slow)
+
+# Define test_sync_schedule executable (notifier scheduling and shared settings)
+add_executable(test_sync_schedule
+    test_sync_schedule.cpp
+)
+
+target_link_libraries(test_sync_schedule PRIVATE
+    octocrux_core
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_sync_schedule COMMAND test_sync_schedule)
+
+# Define test_notifier executable (notifier logic without a tray)
+add_executable(test_notifier
+    test_notifier.cpp
+)
+
+target_link_libraries(test_notifier PRIVATE
+    octocrux_core
+    Qt6::Core
+    Qt6::Test
+)
+
+target_compile_definitions(test_notifier PRIVATE
+    OCTOCRUX_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+add_test(NAME test_notifier COMMAND test_notifier)
