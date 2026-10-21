@@ -54,6 +54,7 @@ private slots:
     void testFailedSyncRecordsNothing();
     void testPolkitRuleAndActionDefinition();
     void testScheduledSyncNeverByDefault();
+    void testPolkitStatusFromPkcheckExitCode();
     void testScheduledSyncUsesPolkitWhenAuthorized();
     void testScheduledSyncFallsBackToSudoN();
     void testScheduledSyncWithoutPasswordFreeWayOnlyReminds();
@@ -232,6 +233,21 @@ void TestNotifier::testPolkitRuleAndActionDefinition() {
     QVERIFY(policy.contains(QStringLiteral("<annotate key=\"org.freedesktop.policykit.exec.argv1\">-u</annotate>")));
     QVERIFY(policy.contains(QStringLiteral("<allow_active>auth_admin</allow_active>")));
     QVERIFY(policy.contains(QStringLiteral("<allow_any>no</allow_any>")));
+}
+
+void TestNotifier::testPolkitStatusFromPkcheckExitCode() {
+    using S = UnattendedSync::PolkitStatus;
+    const QList<QPair<int, S>> cases = {
+        {0, S::Authorized}, {1, S::InactiveSession}, {2, S::NeedsAuthentication},
+        {127, S::ActionNotRegistered}, {3, S::Unavailable}};
+    for (const auto &c : cases) {
+        cleanup();
+        m_tmp = std::make_unique<QTemporaryDir>();
+        QVERIFY2(installFakeElevation(c.first, false), "fakes not first in PATH");
+        QCOMPARE(UnattendedSync::polkitStatus(), c.second);
+    }
+    // The owner's case (rc 1, no ConsoleKit session) explains itself and points to the fix.
+    QVERIFY(UnattendedSync::describe(S::InactiveSession, QStringLiteral("dani77")).contains(QStringLiteral("ck-launch-session")));
 }
 
 void TestNotifier::testScheduledSyncNeverByDefault() {

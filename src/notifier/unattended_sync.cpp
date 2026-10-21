@@ -14,10 +14,10 @@ UnattendedSync::UnattendedSync(QObject *parent)
     connect(&m_runner, &CruxProcessRunner::processFinished, this, &UnattendedSync::onRunnerFinished);
 }
 
-bool UnattendedSync::polkitAuthorized() {
+UnattendedSync::PolkitStatus UnattendedSync::polkitStatus() {
     const QString pkcheck = QStandardPaths::findExecutable(QStringLiteral("pkcheck"));
     if (pkcheck.isEmpty()) {
-        return false;
+        return PolkitStatus::Unavailable;
     }
     // Without --allow-user-interaction pkcheck never prompts: exit 0 means
     // authorized as is, anything else (challenge, denied, unknown action) does not.
@@ -28,9 +28,39 @@ bool UnattendedSync::polkitAuthorized() {
     if (!p.waitForFinished(10000)) {
         p.kill();
         p.waitForFinished(1000);
-        return false;
+        return PolkitStatus::Unavailable;
     }
-    return p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
+    if (p.exitStatus() != QProcess::NormalExit) {
+        return PolkitStatus::Unavailable;
+    }
+    switch (p.exitCode()) {
+    case 0:   return PolkitStatus::Authorized;
+    case 1:   return PolkitStatus::InactiveSession;
+    case 2:   return PolkitStatus::NeedsAuthentication;
+    case 127: return PolkitStatus::ActionNotRegistered;
+    default:  return PolkitStatus::Unavailable;
+    }
+}
+
+QString UnattendedSync::describe(PolkitStatus status, const QString &userName) {
+    switch (status) {
+    case PolkitStatus::Authorized:
+        return QStringLiteral("Unattended sync is authorized through polkit for user \"%1\" "
+                              "(exactly \"/usr/bin/ports -u\").").arg(userName);
+    case PolkitStatus::NeedsAuthentication:
+        return QStringLiteral("polkit would ask for a password: the rule for user \"%1\" is not "
+                              "installed. Use \"Allow unattended sync\".").arg(userName);
+    case PolkitStatus::InactiveSession:
+        return QStringLiteral("polkit does not see this desktop session as local and active "
+                              "(no ConsoleKit/elogind session is registered), so a polkit rule "
+                              "cannot apply. To fix it, start the X session with ck-launch-session "
+                              "(see README, \"Notifier and automatic sync\").");
+    case PolkitStatus::ActionNotRegistered:
+        return QStringLiteral("The polkit action org.octocrux.ports-sync is not installed yet.");
+    case PolkitStatus::Unavailable:
+        break;
+    }
+    return QStringLiteral("polkit is not available (no pkcheck, or it did not answer).");
 }
 
 void UnattendedSync::start(const QString &portsPath) {

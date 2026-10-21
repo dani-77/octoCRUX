@@ -28,6 +28,18 @@ class UnattendedSync : public QObject {
     Q_OBJECT
 public:
     enum class Result { Synced, NeedsAuthentication, Failed };
+
+    /**
+     * pkcheck's answer for org.octocrux.ports-sync, without interaction. The action
+     * allows active sessions only with authentication (auth_admin) and refuses
+     * inactive ones, so the exit code tells the cases apart:
+     *  0 Authorized, 2 NeedsAuthentication (active session, no rule),
+     *  1 InactiveSession (polkit does not see a local active session: no
+     *    ConsoleKit/elogind session; observed on the T480s, 2026-10-21),
+     *  127 ActionNotRegistered ("Action ... is not registered", observed),
+     *  Unavailable: no pkcheck, timeout or other errors.
+     */
+    enum class PolkitStatus { Authorized, NeedsAuthentication, InactiveSession, ActionNotRegistered, Unavailable };
     enum class Method { None, Polkit, Sudo };
 
     static constexpr const char *kActionId = "org.octocrux.ports-sync";
@@ -38,8 +50,11 @@ public:
     void start(const QString &portsPath);
     bool isRunning() const { return m_runner.isRunning(); }
 
+    static PolkitStatus polkitStatus();
     /** True if polkit authorizes org.octocrux.ports-sync for this process without asking. */
-    static bool polkitAuthorized();
+    static bool polkitAuthorized() { return polkitStatus() == PolkitStatus::Authorized; }
+    /** One sentence explaining a status to the user. */
+    static QString describe(PolkitStatus status, const QString &userName);
 
     /** The opt-in polkit rule for one user; empty if the user name is not safe to embed. */
     static QString polkitRuleFor(const QString &userName);

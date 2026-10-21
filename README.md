@@ -67,6 +67,20 @@ The resulting binaries will be:
 
 ---
 
+## Notifier and automatic sync
+
+`octocrux-notifier` sits in the system tray. It shows how many packages Upgrade All would update (locked ones are counted apart) and how long ago the ports tree was synchronized. Reading needs no privileges: it uses `prt-get printf`. It never installs, upgrades or removes packages. Start it with `octocrux-notifier &`; starting it automatically with the session is up to each user.
+
+**Syncing** (`ports -u`) needs root, because it rewrites `/usr/ports`. "Sync ports tree now" in the tray menu runs it through the privilege helper (qt-sudo), which may ask for a password. Automatic sync is **off** by default; turn it on in *Options…* (once a day is suggested). A scheduled sync never shows a password dialog. It runs only if one of these allows `/usr/bin/ports -u` without a password, and otherwise only reminds you:
+
+1. **polkit (recommended).** *Options…* offers to install a rule that lets **your user only**, in a **local, active session**, run exactly `/usr/bin/ports -u` (action `org.octocrux.ports-sync`).
+   polkit only knows a session is local and active if a session tracker registered it. On CRUX with sysvinit that is ConsoleKit2, or elogind. If *Options…* says that polkit "does not see this desktop session as local and active", start your X session through ConsoleKit, for example in `~/.xinitrc`:
+   ```sh
+   exec ck-launch-session dbus-launch --exit-with-session <your window manager>
+   ```
+   After logging in again, `ck-list-sessions` should list your session with `active = TRUE`, and `pkcheck -a org.octocrux.ports-sync -p $$` should exit 0 once the rule is installed.
+2. **sudo.** If sudoers lets your user run `/usr/bin/ports -u` without a password, the notifier uses `sudo -n /usr/bin/ports -u`. A minimal entry is in `contrib/sudoers.d/octocrux-ports-sync.example`. A broad `NOPASSWD: ALL` rule also works, but grants far more than this.
+
 ## Running the Automated Test Suite
 
 OctoCRUX enforces strict empirical verification and the **SCOFS Protocol** (*Special Case Oh Foda-Se*). All parsers, operations planners, process runners, and GUI components are covered by 11 automated test suites:

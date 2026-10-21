@@ -132,16 +132,14 @@ void NotifierOptionsDialog::updateEnabledState() {
 }
 
 void NotifierOptionsDialog::refreshAuthorizationLabel() {
-    if (UnattendedSync::polkitAuthorized()) {
-        m_lblAuthorization->setText(QStringLiteral(
-            "Unattended sync is authorized through polkit for user \"%1\" (exactly \"/usr/bin/ports -u\").")
-            .arg(currentUserName()));
-    } else {
-        m_lblAuthorization->setText(QStringLiteral(
-            "Unattended sync is not authorized through polkit. Scheduled syncs will use "
-            "\"sudo -n /usr/bin/ports -u\" if your sudoers allows it without a password; "
-            "otherwise the notifier only reminds you. It never shows a password dialog on its own."));
+    const UnattendedSync::PolkitStatus status = UnattendedSync::polkitStatus();
+    QString text = UnattendedSync::describe(status, currentUserName());
+    if (status != UnattendedSync::PolkitStatus::Authorized) {
+        text += QStringLiteral("\n\nWithout polkit, scheduled syncs use \"sudo -n /usr/bin/ports -u\" "
+                               "if your sudoers allows it without a password; otherwise the notifier "
+                               "only reminds you. It never shows a password dialog on its own.");
     }
+    m_lblAuthorization->setText(text);
 }
 
 bool NotifierOptionsDialog::runElevated(const QString &program, const QStringList &args, const QString &what) {
@@ -205,11 +203,12 @@ void NotifierOptionsDialog::installRule() {
                     {QStringLiteral("-D"), QStringLiteral("-m"), QStringLiteral("0644"),
                      tmp.fileName(), UnattendedSync::ruleFilePath(user)},
                     QStringLiteral("install the polkit rule"))) {
+        const UnattendedSync::PolkitStatus status = UnattendedSync::polkitStatus();
         QMessageBox::information(this, QStringLiteral("OctoCRUX"),
-            UnattendedSync::polkitAuthorized()
+            status == UnattendedSync::PolkitStatus::Authorized
                 ? QStringLiteral("Rule installed: unattended sync is now authorized.")
-                : QStringLiteral("Rule installed, but polkit does not report the sync as authorized yet "
-                                 "(is polkitd running, and is this a local active session?)."));
+                : QStringLiteral("Rule installed, but polkit does not authorize the sync yet.\n\n%1")
+                      .arg(UnattendedSync::describe(status, user)));
     }
     refreshAuthorizationLabel();
 }
