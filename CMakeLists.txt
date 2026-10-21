@@ -140,9 +140,13 @@ install(FILES data/octocrux.desktop data/octocrux-notifier.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
 
-install(FILES data/icons/octocrux.svg
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
-)
+# The logo as PNGs in the hicolor sizes menus and panels ask for.
+foreach(size 16 32 48 128 192 512)
+    install(FILES data/icons/octocrux-${size}.png
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps
+        RENAME octocrux.png
+    )
+endforeach()
 
 # The polkit action only defines org.octocrux.ports-sync (auth_admin by itself);
 # the password-free rule is installed per user, on opt-in, by the notifier.

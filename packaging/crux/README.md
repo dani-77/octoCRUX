@@ -8,7 +8,7 @@ release tarball from GitHub with CMake and installs:
 | `/usr/bin/octocrux` | the package manager |
 | `/usr/bin/octocrux-notifier` | the tray notifier (start it yourself, or enable autostart, see the main README) |
 | `/usr/share/applications/octocrux.desktop`, `octocrux-notifier.desktop` | menu entries |
-| `/usr/share/icons/hicolor/scalable/apps/octocrux.svg` | icon |
+| `/usr/share/icons/hicolor/{16x16,32x32,48x48,128x128,192x192,512x512}/apps/octocrux.png` | the logo, as menu and panel icons |
 | `/usr/share/polkit-1/actions/org.octocrux.ports-sync.policy` | polkit action for exactly `/usr/bin/ports -u`; needs admin authentication by itself |
 
 No documentation is installed (`-D OCTOCRUX_INSTALL_DOCS=OFF`, following the

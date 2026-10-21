@@ -1,6 +1,8 @@
-# OctoCRUX
+<p align="center"><img src="data/icons/octocrux-512.png" width="192" alt="OctoCRUX logo"></p>
 
-Native Qt 6 graphical package manager for CRUX Linux 3.8 (`prt-get`, `pkgutils`, `ports`), replicating the Octopi/OctoXBPS desktop workflow while strictly respecting CRUX's source-based philosophy, minimalist design, and multi-collection overlay semantics.
+<h1 align="center">OctoCRUX</h1>
+
+<p align="center">Native Qt 6 graphical package manager for CRUX Linux 3.8 (<code>prt-get</code>, <code>pkgutils</code>, <code>ports</code>), replicating the Octopi/OctoXBPS desktop workflow while strictly respecting CRUX's source-based philosophy, minimalist design, and multi-collection overlay semantics.</p>
 
 ---
 
