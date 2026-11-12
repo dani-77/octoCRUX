@@ -13,6 +13,7 @@ const QString kLastSync = QStringLiteral("sync/lastSync");
 const QString kPrivilegeHelper = QStringLiteral("privilege/helper");
 const QString kCancelGrace = QStringLiteral("operations/cancelGraceSeconds");
 const QString kAutoHelper = QStringLiteral("auto");
+const QString kLargePorts = QStringLiteral("binaries/largePorts");
 } // namespace
 
 OctoCruxSettings::OctoCruxSettings()
@@ -77,6 +78,25 @@ int OctoCruxSettings::cancelGraceSeconds() const {
 
 void OctoCruxSettings::setCancelGraceSeconds(int seconds) {
     m_settings->setValue(kCancelGrace, std::clamp(seconds, kMinCancelGraceSeconds, kMaxCancelGraceSeconds));
+}
+
+QStringList OctoCruxSettings::defaultLargePorts() {
+    return {QStringLiteral("llvm"), QStringLiteral("clang"), QStringLiteral("lld"),
+            QStringLiteral("compiler-rt"), QStringLiteral("rust"), QStringLiteral("gcc"),
+            QStringLiteral("qt6-webengine"), QStringLiteral("firefox"), QStringLiteral("webkitgtk"),
+            QStringLiteral("libreoffice")};
+}
+
+QStringList OctoCruxSettings::largePorts() const {
+    if (!m_settings->contains(kLargePorts)) {
+        return defaultLargePorts();
+    }
+    // Space-separated in the file, so it stays readable and editable by hand.
+    return m_settings->value(kLargePorts).toString().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+}
+
+void OctoCruxSettings::setLargePorts(const QStringList &ports) {
+    m_settings->setValue(kLargePorts, ports.join(QLatin1Char(' ')));
 }
 
 void OctoCruxSettings::sync() {

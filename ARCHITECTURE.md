@@ -260,6 +260,19 @@ Helper selection (Phase 5b): `OctoCruxSettings::preferredHelper()` stores `auto`
   - The offer does not depend on the exit code, because prt-get's exit code for a multi-port run with failures is not verified.
   - Verified in the sandbox: `pkgmk -in` turns a NEW-only mismatch into `New files found:` + `Building '...' succeeded.` (rc 0). The real criu and elfutils logs of 2026-10-20 parse as NEW-only.
 
+#### 5.2.3 Binary packages from d77crux-cache (step A: inform)
+CRUX publishes no binary updates. The owner's `d77crux-cache` (d77crux collection, `binpkg/` there) places verified binaries from Jaeger's updated CRUX ISO (crux.ninja) in the core/opt/xorg port directories. pkgmk then reports those ports "up to date" and prt-get installs the binary instead of compiling. prt-get stays the only authority, so OctoCRUX gets the binaries without changing how it installs. What OctoCRUX adds is telling the user beforehand which updates will compile:
+- **Report:** after each catalog refresh with outdated ports, `BinaryCacheProbe` runs `d77crux-cache -n` in the background. It reports only, needs no root, and downloads and verifies the signed manifest. `BinaryCacheReport` parses its `note()` lines (`<category> <port> <detail>`). A failed run, for example without network, keeps the previous report. Without `d77crux-cache` in PATH nothing runs and nothing changes.
+- **Preview:** a "Binary packages" section for the plan's build steps, in five groups:
+  - binary ready (`present`, `cached`);
+  - binary available, not placed yet (`would-cache`): d77crux-cache must run as root first, or prt-get compiles;
+  - binary on its way (`skip-version`): the port is newer than the snapshot;
+  - available but locked;
+  - compiles from source (the other `skip-*` categories and `failed`).
+  It shows the report time and the snapshot's age, from `/var/lib/d77crux-cache/channel-published`; the owner reports 3-4 new ISOs a month, so 7-10 days between snapshots. Ports in the "large ports" setting are marked `[large]` and get a warning when they would compile, or when their binary is on its way.
+- The labels inform. prt-get still decides, so a stale report can at worst say "binary" for a port that then compiles.
+- Steps B (leave pending ports out of a run; run `d77crux-cache` as root before Upgrade and after Sync) and C (update a locked port from its binary) are approved in principle, not implemented.
+
 ### 5.3 Cancellation Policy (Pending Test 2.10.3)
 - When the user clicks **Cancel**:
   1. OctoCRUX issues `SIGTERM` to the immediate child helper process via `CruxProcessRunner::cancel()` (`m_process->terminate()`), strictly avoiding blunt `SIGKILL`.

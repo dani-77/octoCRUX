@@ -5,6 +5,7 @@
 #include <optional>
 
 class QComboBox;
+class QLineEdit;
 class QSpinBox;
 
 namespace OctoCRUX {
@@ -23,15 +24,18 @@ class SettingsDialog : public QDialog {
 public:
     SettingsDialog(std::optional<PrivilegeHelperType> preferredHelper,
                    int cancelGraceSeconds,
+                   const QStringList &largePorts,
                    QWidget *parent = nullptr);
 
     /** nullopt = automatic detection. */
     std::optional<PrivilegeHelperType> preferredHelper() const;
     int cancelGraceSeconds() const;
+    QStringList largePorts() const;
 
 private:
     QComboBox *m_comboHelper = nullptr;
     QSpinBox *m_spinGrace = nullptr;
+    QLineEdit *m_editLargePorts = nullptr;
 };
 
 } // namespace OctoCRUX

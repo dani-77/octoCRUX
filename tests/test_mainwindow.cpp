@@ -33,6 +33,7 @@
 #include "ui/settings_dialog.h"
 #include "backend/crux_process_runner.h"
 #include "core/work_dir_cleanup.h"
+#include "core/binary_cache_report.h"
 
 #include <QProcess>
 #include <unistd.h>
@@ -95,6 +96,7 @@ private slots:
     void testWaitingHintRestoresThePhase();
     void testCancelOffersToRemoveLeftoverWorkDir();
     void testLeftoverWorkDirKeptWhenDeclined();
+    void testUpgradePreviewShowsBinaryAvailability();
 
 private:
     QString readFile(const QString &filePath);
@@ -159,6 +161,10 @@ void TestMainWindow::initTestCase() {
     // Never the host's /usr/ports/work: a Cancel in any test would otherwise find
     // real leftovers (root-owned, so never removable here, but offered in a dialog).
     m_window->setWorkRootOverride(m_emptyWorkRoot.path());
+    // Never the host's d77crux-cache (network) or its snapshot date: the first
+    // report is only scheduled by the constructor's refresh, so this comes in time.
+    m_window->binaryCacheProbe()->setToolPath(QString());
+    m_window->setBinarySnapshotFile(m_emptyWorkRoot.filePath(QStringLiteral("no-channel-published")));
 }
 
 void TestMainWindow::testInitialPopulationAndCounts() {
@@ -544,6 +550,70 @@ void TestMainWindow::testLeftoverWorkDirKeptWhenDeclined() {
         QStringLiteral("[octoCRUX] Leftover work directories kept.")), 2000);
     QVERIFY(QFileInfo::exists(leftover));
     QVERIFY(probeLines().isEmpty()); // no process started
+}
+
+void TestMainWindow::testUpgradePreviewShowsBinaryAvailability() {
+    // gtk3 outdated in memory (as in testUpgradePreviewGatesExecution), and a fake
+    // d77crux-cache whose report says gtk3's binary is still on its way.
+    const QString printfPath = m_sourceDir + QStringLiteral("/tests/fixtures/crux3.8/cmd/printf-production-11token.out");
+    const QString original = readFile(printfPath);
+    QStringList lines = original.split(QLatin1Char('\n'));
+    for (QString &line : lines) {
+        QStringList f = line.split(QLatin1Char('\t'));
+        if (f.size() == 11 && f.at(0) == QLatin1String("gtk3") && f.at(3) == QLatin1String("yes")) {
+            f[3] = QStringLiteral("diff");
+            line = f.join(QLatin1Char('\t'));
+        }
+    }
+    const QStringList printfArgs = {QStringLiteral("printf"), QString::fromLatin1(PrintfParser::PRODUCTION_FORMAT)};
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString report = dir.filePath(QStringLiteral("report.txt"));
+    const QString channel = dir.filePath(QStringLiteral("channel-published"));
+    {
+        QFile f(report);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        // d77crux-cache's own line format (printf '%-16s %-28s %s\n').
+        f.write("skip-version     gtk3                         tree 3.24.52-1, release 3.24.51-1\n\nskip-version=1 \n");
+        QFile c(channel);
+        QVERIFY(c.open(QIODevice::WriteOnly));
+        c.write(QDateTime::currentDateTimeUtc().addDays(-3).toString(Qt::ISODate).toUtf8() + "\n");
+    }
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    auto restore = qScopeGuard([&]() {
+        removeFakeTools();
+        qunsetenv("FAKE_CACHE_REPORT");
+        m_window->binaryCacheProbe()->setToolPath(QString());
+        m_window->setBinarySnapshotFile(m_emptyWorkRoot.filePath(QStringLiteral("no-channel-published")));
+        m_mockRunner->registerResponse(QStringLiteral("prt-get"), printfArgs, {0, original, QString()});
+        m_adapter->invalidateCache();
+        m_window->refreshCatalog();
+    });
+    qputenv("FAKE_CACHE_REPORT", report.toLocal8Bit());
+    m_window->binaryCacheProbe()->setToolPath(m_sourceDir + QStringLiteral("/tests/scripts/fake_d77crux_cache.sh"));
+    m_window->setBinarySnapshotFile(channel);
+
+    // The refresh starts the report in the background.
+    QSignalSpy spyReport(m_window->binaryCacheProbe(), &BinaryCacheProbe::reportReady);
+    m_mockRunner->registerResponse(QStringLiteral("prt-get"), printfArgs, {0, lines.join(QLatin1Char('\n')), QString()});
+    m_adapter->invalidateCache();
+    m_window->refreshCatalog();
+    QVERIFY(spyReport.wait(5000));
+    QCOMPARE(probeLines(), QStringList{QStringLiteral("d77crux-cache -n")}); // report only
+
+    QString summary;
+    onNextModal([&](QWidget *w) {
+        if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(w)) summary = dlg->summaryText();
+        if (auto *d = qobject_cast<QDialog*>(w)) d->reject();
+    });
+    m_window->setSearchText(QString());
+    m_window->tableView()->clearSelection();
+    toolButton(QStringLiteral("Upgrade All"))->click();
+    QTRY_VERIFY_WITH_TIMEOUT(!summary.isEmpty(), 3000);
+    QVERIFY2(summary.contains(QStringLiteral("binary snapshot published 3 days ago")), qPrintable(summary));
+    QVERIFY(summary.contains(QStringLiteral("Binary on its way (the port is newer than the snapshot), compiles now (1): "
+                                            "gtk3 (port 3.24.52-1, binary 3.24.51-1)")));
+    QCOMPARE(probeLines(), QStringList{QStringLiteral("d77crux-cache -n")}); // rejected: nothing else ran
 }
 
 bool TestMainWindow::installFakeTools() {

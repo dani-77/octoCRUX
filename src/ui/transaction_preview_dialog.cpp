@@ -53,7 +53,8 @@ TransactionPreviewDialog::TransactionPreviewDialog(const QString &title,
                                                    const TransactionPlan &plan,
                                                    const QList<QStringList> &commands,
                                                    PrivilegeHelperType helper,
-                                                   QWidget *parent)
+                                                   QWidget *parent,
+                                                   const BinaryCacheContext &binaries)
     : QDialog(parent)
 {
     setObjectName(QStringLiteral("transactionPreviewDialog"));
@@ -86,7 +87,7 @@ TransactionPreviewDialog::TransactionPreviewDialog(const QString &title,
     m_summary = new QPlainTextEdit(this);
     m_summary->setReadOnly(true);
     m_summary->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    m_summary->setPlainText(describe(plan, commands, helper));
+    m_summary->setPlainText(describe(plan, commands, helper, binaries));
     layout->addWidget(m_summary);
 
     auto *buttons = new QDialogButtonBox(this);
@@ -143,9 +144,99 @@ QString TransactionPreviewDialog::formatCommand(const QStringList &argv) {
     return parts.join(QLatin1Char(' '));
 }
 
+QStringList TransactionPreviewDialog::describeBinaries(const TransactionPlan &plan,
+                                                       const BinaryCacheContext &binaries,
+                                                       QStringList &warnings) {
+    QStringList out;
+    if (!binaries.available) {
+        return out;
+    }
+    QStringList ready, notPlaced, pending, locked, builds;
+    QStringList largePending, largeBuilds;
+    QStringList seen;
+    for (const TransactionStep &step : plan.steps) {
+        const bool buildStep = step.action == TransactionAction::Install || step.action == TransactionAction::Upgrade
+                            || step.action == TransactionAction::Reinstall;
+        if (!buildStep || seen.contains(step.portName)) {
+            continue;
+        }
+        seen << step.portName;
+        const BinaryCacheReport::Entry e = binaries.report.entry(step.portName);
+        const bool large = binaries.largePorts.contains(step.portName);
+        const QString name = large ? step.portName + QStringLiteral(" [large]") : step.portName;
+        switch (e.status) {
+        case BinaryStatus::Ready:
+            ready << name;
+            break;
+        case BinaryStatus::NotPlaced:
+            notPlaced << name;
+            break;
+        case BinaryStatus::Pending: {
+            const auto versions = BinaryCacheReport::treeAndRelease(e.detail);
+            pending << (versions.first.isEmpty() ? QStringLiteral("%1 (%2)").arg(name, e.detail)
+                                                 : QStringLiteral("%1 (port %2, binary %3)").arg(name, versions.first, versions.second));
+            if (large) largePending << step.portName;
+            break;
+        }
+        case BinaryStatus::LockedAvailable:
+            locked << name;
+            break;
+        case BinaryStatus::Builds:
+            builds << QStringLiteral("%1 (%2)").arg(name, e.detail);
+            if (large) largeBuilds << step.portName;
+            break;
+        case BinaryStatus::Unknown:
+            break;
+        }
+    }
+    if (ready.isEmpty() && notPlaced.isEmpty() && pending.isEmpty() && locked.isEmpty() && builds.isEmpty()) {
+        return out;
+    }
+
+    QString snapshot;
+    if (binaries.snapshotPublished.isValid() && binaries.now.isValid()) {
+        const qint64 days = binaries.snapshotPublished.toLocalTime().date().daysTo(binaries.now.date());
+        snapshot = days <= 0 ? QStringLiteral("published today")
+                 : days == 1 ? QStringLiteral("published 1 day ago")
+                             : QStringLiteral("published %1 days ago").arg(days);
+        snapshot += days > 10 ? QStringLiteral("; new ones usually come every 7-10 days, so one may be due")
+                              : QStringLiteral("; new ones usually come every 7-10 days");
+    }
+    const QString checked = binaries.report.checkedAt.isValid()
+        ? QStringLiteral("report from %1").arg(binaries.report.checkedAt.toString(QStringLiteral("HH:mm")))
+        : QString();
+    QStringList about;
+    if (!checked.isEmpty()) about << checked;
+    if (!snapshot.isEmpty()) about << QStringLiteral("binary snapshot ") + snapshot;
+    out << (about.isEmpty() ? QStringLiteral("Binary packages (d77crux-cache):")
+                            : QStringLiteral("Binary packages (d77crux-cache; %1):").arg(about.join(QStringLiteral("; "))));
+    const auto add = [&out](const QString &heading, const QStringList &items) {
+        if (!items.isEmpty()) {
+            out << QStringLiteral("  %1 (%2): %3").arg(heading).arg(items.size()).arg(items.join(QStringLiteral(", ")));
+        }
+    };
+    add(QStringLiteral("Binary ready, installs without compiling"), ready);
+    add(QStringLiteral("Binary available, not placed yet (run d77crux-cache as root before Apply, or it compiles)"), notPlaced);
+    add(QStringLiteral("Binary on its way (the port is newer than the snapshot), compiles now"), pending);
+    add(QStringLiteral("Binary available, but locked"), locked);
+    add(QStringLiteral("Compiles from source"), builds);
+    out << QString();
+
+    if (!largePending.isEmpty()) {
+        warnings << QStringLiteral("%1 take(s) long to compile, and a binary should come with the next snapshot: "
+                                   "consider leaving them out of this run.").arg(largePending.join(QStringLiteral(", ")));
+    }
+    if (!largeBuilds.isEmpty()) {
+        warnings << QStringLiteral("%1 take(s) long to compile and no binary is expected.")
+                        .arg(largeBuilds.join(QStringLiteral(", ")));
+    }
+    return out;
+}
+
 QString TransactionPreviewDialog::describe(const TransactionPlan &plan,
                                            const QList<QStringList> &commands,
-                                           PrivilegeHelperType helper) {
+                                           PrivilegeHelperType helper,
+                                           const BinaryCacheContext &binaries) {
     QStringList out;
 
     out << QStringLiteral("Commands, in execution order:");
@@ -195,6 +286,7 @@ QString TransactionPreviewDialog::describe(const TransactionPlan &plan,
     }
 
     QStringList warnings = plan.criticalWarnings;
+    out << describeBinaries(plan, binaries, warnings);
     const QStringList unsignedPorts = signatureCheckDisabled(plan);
     if (!unsignedPorts.isEmpty()) {
         warnings << QStringLiteral("SIGNATURE VERIFICATION DISABLED for %1: the sources cannot be authenticated.")

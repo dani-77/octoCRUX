@@ -1,0 +1,13 @@
+report-n-20261112.txt
+=====================
+
+Standard output of `d77crux-cache -n` (d77crux-cache 0.1.2, report only, run
+unprivileged), captured on the owner's T480s on 2026-11-12 against the channel
+binpkg-channel-3.8-x86_64 (snapshot published 2026-11-10T21:26:29Z). The
+stderr line "ACCEPT_GENERIC=yes: placing generic x86-64 binaries..." is not
+part of it, as OctoCRUX reads stdout only.
+
+Four outdated ports: three ahead of the snapshot (skip-version) and one not
+in the release (skip-absent), then the per-category counts line. A run a few
+minutes earlier also listed "skip-collection go /usr/ports/contrib is not
+official".

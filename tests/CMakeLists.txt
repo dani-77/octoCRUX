@@ -234,3 +234,20 @@ target_link_libraries(test_work_dir_cleanup PRIVATE
 )
 
 add_test(NAME test_work_dir_cleanup COMMAND test_work_dir_cleanup)
+
+# Define test_binary_cache executable (d77crux-cache report, preview section, background probe)
+add_executable(test_binary_cache
+    test_binary_cache.cpp
+)
+
+target_link_libraries(test_binary_cache PRIVATE
+    octocrux_core
+    Qt6::Core
+    Qt6::Test
+)
+
+target_compile_definitions(test_binary_cache PRIVATE
+    OCTOCRUX_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+add_test(NAME test_binary_cache COMMAND test_binary_cache)

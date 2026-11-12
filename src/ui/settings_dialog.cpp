@@ -6,6 +6,8 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
+#include <QLineEdit>
+#include <QRegularExpression>
 #include <QSpinBox>
 #include <QStandardPaths>
 #include <QVBoxLayout>
@@ -18,7 +20,8 @@ constexpr int kAutoItem = -1;
 } // namespace
 
 SettingsDialog::SettingsDialog(std::optional<PrivilegeHelperType> preferredHelper,
-                               int cancelGraceSeconds, QWidget *parent)
+                               int cancelGraceSeconds, const QStringList &largePorts,
+                               QWidget *parent)
     : QDialog(parent)
 {
     setWindowTitle(QStringLiteral("OctoCRUX Settings"));
@@ -62,6 +65,15 @@ SettingsDialog::SettingsDialog(std::optional<PrivilegeHelperType> preferredHelpe
     graceNote->setWordWrap(true);
     form->addRow(graceNote);
 
+    m_editLargePorts = new QLineEdit(largePorts.join(QLatin1Char(' ')), this);
+    m_editLargePorts->setObjectName(QStringLiteral("largePortsEdit"));
+    form->addRow(QStringLiteral("Large ports:"), m_editLargePorts);
+    auto *largeNote = new QLabel(QStringLiteral(
+        "Space-separated port names that take long to compile. With d77crux-cache installed, the "
+        "preview points them out when they would compile, or when a binary is on its way."), this);
+    largeNote->setWordWrap(true);
+    form->addRow(largeNote);
+
     layout->addLayout(form);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
@@ -79,6 +91,10 @@ std::optional<PrivilegeHelperType> SettingsDialog::preferredHelper() const {
 
 int SettingsDialog::cancelGraceSeconds() const {
     return m_spinGrace->value();
+}
+
+QStringList SettingsDialog::largePorts() const {
+    return m_editLargePorts->text().split(QRegularExpression(QStringLiteral("[\\s,]+")), Qt::SkipEmptyParts);
 }
 
 } // namespace OctoCRUX

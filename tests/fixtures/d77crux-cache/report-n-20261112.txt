@@ -1,0 +1,6 @@
+skip-version     dash                         tree 0.5.13.6-1, release 0.5.13.5-1
+skip-version     desktop-file-utils           tree 0.29-1, release 0.28-1
+skip-absent      git                          2.56.1-1: not in the release
+skip-version     xorg-server                  tree 21.1.26-1, release 21.1.25-1
+
+skip-absent=1 skip-version=3 

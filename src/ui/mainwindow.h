@@ -5,6 +5,7 @@
 #include "model/package_filter_proxy_model.h"
 #include "operations/transaction_planner.h"
 #include "core/octocrux_settings.h"
+#include "core/binary_cache_report.h"
 
 #include <QMainWindow>
 #include <QItemSelection>
@@ -77,6 +78,11 @@ public:
      * default) reads PKGMK_WORK_DIR from pkgmk.conf; tests point it elsewhere.
      */
     void setWorkRootOverride(const QString &workRoot);
+
+    /** Runs "d77crux-cache -n" after each catalog refresh (tests set its tool path). */
+    BinaryCacheProbe* binaryCacheProbe() const;
+    /** Where the binary snapshot date is read (tests point it elsewhere). */
+    void setBinarySnapshotFile(const QString &path);
 
     /** Delay between checks that the cancelled tree has ended, and how many checks. */
     static constexpr int kLeftoverPollMs = 500;
@@ -242,6 +248,8 @@ private:
     bool m_rejectedReportedThisRun = false;
 
     QString m_workRootOverride;
+    BinaryCacheProbe *m_binaryProbe = nullptr;
+    QString m_binarySnapshotFile = QStringLiteral("/var/lib/d77crux-cache/channel-published");
     std::shared_ptr<OctoCruxSettings> m_settings;
     bool m_syncInFlight = false;        // the running operation is ports -u
 };

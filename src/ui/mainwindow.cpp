@@ -82,6 +82,8 @@ MainWindow::MainWindow(std::shared_ptr<ICruxBackend> backend, QWidget *parent)
 
     m_proxyModel->setSourceModel(m_packageModel.get());
 
+    // Before the first refresh: it schedules the first binary cache report.
+    m_binaryProbe = new BinaryCacheProbe(this);
     setupUi();
 
     connect(m_backend.get(), &ICruxBackend::outputReceived,
@@ -485,6 +487,27 @@ void MainWindow::refreshCatalog() {
     // so the buttons must be re-evaluated here or they keep the old port's state.
     updateActionButtons();
     QApplication::restoreOverrideCursor();
+
+    // Which updates have a binary (d77crux-cache), fetched in the background
+    // for the next preview. Scheduled, so tests can disable it right after
+    // constructing the window.
+    QTimer::singleShot(0, this, [this]() {
+        bool outdated = false;
+        for (const PortInfo &p : m_packageModel->ports()) {
+            outdated |= p.installStatus == InstallStatus::Outdated;
+        }
+        if (outdated) {
+            m_binaryProbe->start();
+        }
+    });
+}
+
+BinaryCacheProbe* MainWindow::binaryCacheProbe() const {
+    return m_binaryProbe;
+}
+
+void MainWindow::setBinarySnapshotFile(const QString &path) {
+    m_binarySnapshotFile = path;
 }
 
 void MainWindow::setFilterStatus(StatusFilter status) {
@@ -1100,12 +1123,14 @@ void MainWindow::applyPrivilegePreference() {
 void MainWindow::onSettingsClicked() {
     if (m_operationInProgress || !m_settings) return;
 
-    SettingsDialog dialog(m_settings->preferredHelper(), m_settings->cancelGraceSeconds(), this);
+    SettingsDialog dialog(m_settings->preferredHelper(), m_settings->cancelGraceSeconds(),
+                          m_settings->largePorts(), this);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
     m_settings->setPreferredHelper(dialog.preferredHelper());
     m_settings->setCancelGraceSeconds(dialog.cancelGraceSeconds());
+    m_settings->setLargePorts(dialog.largePorts());
     m_settings->sync();
     m_backend->setCancelGracePeriodMs(m_settings->cancelGraceSeconds() * 1000);
 
@@ -1204,7 +1229,14 @@ bool MainWindow::confirmTransaction(const QString &title, const TransactionPlan 
         return false;
     }
 
-    TransactionPreviewDialog dialog(title, plan, commands, m_backend->privilegeHelperType(), this);
+    BinaryCacheContext binaries;
+    binaries.available = m_binaryProbe->isAvailable() && m_binaryProbe->hasReport();
+    binaries.report = m_binaryProbe->lastReport();
+    binaries.snapshotPublished = BinaryCacheContext::readSnapshotPublished(m_binarySnapshotFile);
+    binaries.now = QDateTime::currentDateTime();
+    binaries.largePorts = m_settings ? m_settings->largePorts() : OctoCruxSettings::defaultLargePorts();
+
+    TransactionPreviewDialog dialog(title, plan, commands, m_backend->privilegeHelperType(), this, binaries);
     return dialog.exec() == QDialog::Accepted;
 }
 

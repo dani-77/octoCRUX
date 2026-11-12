@@ -1,6 +1,7 @@
 #pragma once
 
 #include "octocrux/types.h"
+#include "core/binary_cache_report.h"
 #include <QDialog>
 #include <QList>
 #include <QStringList>
@@ -28,7 +29,8 @@ public:
                              const TransactionPlan &plan,
                              const QList<QStringList> &commands,
                              PrivilegeHelperType helper,
-                             QWidget *parent = nullptr);
+                             QWidget *parent = nullptr,
+                             const BinaryCacheContext &binaries = BinaryCacheContext());
 
     /** The plain-text summary shown in the dialog. */
     QString summaryText() const;
@@ -38,7 +40,17 @@ public:
     /** Builds the summary text; pure, so it can be tested without a window. */
     static QString describe(const TransactionPlan &plan,
                             const QList<QStringList> &commands,
-                            PrivilegeHelperType helper);
+                            PrivilegeHelperType helper,
+                            const BinaryCacheContext &binaries = BinaryCacheContext());
+
+    /**
+     * The "Binary packages" section: which ports of the plan install from the
+     * d77crux binary cache and which compile, with large ports pointed out and
+     * the snapshot's age. Empty when there is no report or no port of the plan
+     * is in it. Its warnings go to warnings.
+     */
+    static QStringList describeBinaries(const TransactionPlan &plan, const BinaryCacheContext &binaries,
+                                        QStringList &warnings);
 
     /** Build steps whose signature check is disabled for this run (shown in red). */
     static QStringList signatureCheckDisabled(const TransactionPlan &plan);

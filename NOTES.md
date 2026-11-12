@@ -655,3 +655,13 @@ Tested with a fake `sudo` first in `PATH`: the dialog's choice reaches the backe
 2. **Settings & Configuration Storage:**
    - Persistent preferences (`QSettings`) for the preferred privilege helper (`qt-sudo`, `sudo`, `doas`) and check intervals. **No build-directory setting:** `PKGMK_WORK_ROOT` is not a CRUX variable (it exists only in the owner's `/etc/pkgmk.conf`) and `sudo` strips it (`env_reset`), see §3.3 item 1 and ARCHITECTURE §2.2. The work directory comes from `pkgmk.conf`; OctoCRUX only inspects its mount (`/proc/self/mountinfo`, `statvfs`).
 
+### 7.8 Binary packages through d77crux-cache (2026-11-12)
+- **Owner's question:** can OctoCRUX suggest waiting for ready binaries for big core/opt/xorg ports? CRUX has no binary updates, but the owner's `d77crux-cache` (d77crux, 0.1.2) already places verified binaries from Jaeger's updated ISO, and prt-get installs them unchanged. OctoCRUX's part is to inform and, later, to act.
+- **Owner decisions:**
+  - an editable list of large ports;
+  - pending ports are *postponed* from a run, not locked;
+  - new snapshots come every 7-10 days (3-4 ISOs a month, no fixed rhythm).
+- **Step A (done):** the background `d77crux-cache -n` report, the preview's "Binary packages" section with `[large]` marks, warnings and the snapshot's age, and the Large ports setting (ARCHITECTURE 5.2.3).
+  - The real report of 2026-11-12 is a fixture: dash, desktop-file-utils and xorg-server `skip-version`; git `skip-absent`.
+  - The UI test runs a fake `d77crux-cache` through the refresh to the Upgrade All preview. A mutation check confirmed it fails when the report does not reach the preview.
+- **Next:** step B (postpone pending ports; run `d77crux-cache` as root before Upgrade and after Sync), then step C (locked ports from their binary).

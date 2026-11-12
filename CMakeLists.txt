@@ -41,6 +41,8 @@ add_library(octocrux_core STATIC
     src/core/octocrux_settings.cpp
     src/core/work_dir_cleanup.h
     src/core/work_dir_cleanup.cpp
+    src/core/binary_cache_report.h
+    src/core/binary_cache_report.cpp
     src/notifier/notifier_core.h
     src/notifier/notifier_core.cpp
     src/notifier/unattended_sync.h

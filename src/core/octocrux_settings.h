@@ -50,6 +50,14 @@ public:
     int cancelGraceSeconds() const;
     void setCancelGraceSeconds(int seconds);
 
+    /**
+     * Ports that take long to compile (hours for llvm). The preview points them
+     * out when they would compile, or when a binary is on its way.
+     */
+    QStringList largePorts() const;
+    void setLargePorts(const QStringList &ports);
+    static QStringList defaultLargePorts();
+
     void sync();
 
 private:
