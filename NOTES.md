@@ -678,3 +678,4 @@ Tested with a fake `sudo` first in `PATH`: the dialog's choice reaches the backe
   - **Reproducer:** a fake d77crux-cache with `FAKE_CACHE_DELAY=1.5` and Upgrade All at once. It failed before the fix.
   - **Fix:** `waitForBinaryReport()` before every preview, which waits up to 20 s, with a progress dialog and "Continue without". Tested, including the skip button.
   - **Lesson:** fakes for networked tools must also simulate their latency.
+  - **Real run on the T480s [owner-reported], 0.1.3 installed from d77crux, notifier restarted at 20:49:** the tray's "Upgrade All..." now shows the "Binary packages" section in the preview.
