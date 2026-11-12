@@ -232,6 +232,10 @@ struct TransactionPlan {
     QStringList protectedPackagesBlocked;  // Core packages requested for removal but blocked
     QStringList errors;                    // Blocking errors preventing plan execution (e.g. missing port, protected package)
 
+    // Binary packages (d77crux-cache)
+    bool runBinaryCacheFirst = false;      // run d77crux-cache as root before the build steps
+    QStringList postponedForBinary;        // updates left out of this run: their binary is on its way
+
     // Filesystem inspection
     FilesystemInfo workMountInfo;
     quint64 estimatedWorkSpaceAvailable = 0; // Bytes free on work mount

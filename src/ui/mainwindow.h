@@ -155,7 +155,7 @@ private:
      * A plan with no commands is reported as "nothing to do" and returns false.
      * No process is started here.
      */
-    bool confirmTransaction(const QString &title, const TransactionPlan &plan);
+    bool confirmTransaction(const QString &title, TransactionPlan &plan);
     /**
      * Applies the pending build check exceptions to the plan, asks for
      * confirmation and, if accepted, executes it. Returns true if it started.
@@ -175,6 +175,8 @@ private:
      * reports work directories the build left behind and offers to remove them.
      */
     void checkLeftoverWorkDirs(int attemptsLeft);
+    /** The Sync confirmation: every command it runs (ports -u, then d77crux-cache if installed). */
+    QString syncConfirmationText();
     QString leftoverWorkRoot() const;
     /** True if at least one package is outdated and unlocked (Upgrade All has work). */
     bool hasUpgradablePackages() const;

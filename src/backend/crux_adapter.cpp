@@ -581,11 +581,38 @@ QList<CruxAdapter::BatchedOperation> CruxAdapter::buildBatchedOperations(const T
         ops.append(op);
     }
 
+    // 0. d77crux-cache places verified binaries first, so prt-get installs them
+    // instead of compiling. Only before updates: it only handles outdated ports.
+    if (plan.runBinaryCacheFirst && !m_binaryCacheTool.isEmpty() && !upgradeTargets.isEmpty()) {
+        ops.prepend(binaryCacheOperation());
+    }
+
     for (int i = 0; i < ops.size(); ++i) {
         ops[i].currentStep = i + 1;
         ops[i].totalSteps = ops.size();
     }
     return ops;
+}
+
+CruxAdapter::BatchedOperation CruxAdapter::binaryCacheOperation() const {
+    BatchedOperation op;
+    op.program = m_binaryCacheTool;
+    op.description = QStringLiteral("Placing verified binary packages (d77crux-cache)");
+    op.optional = true;
+    return op;
+}
+
+void CruxAdapter::setBinaryCacheTool(const QString &path) {
+    m_binaryCacheTool = path;
+}
+
+QList<QStringList> CruxAdapter::syncCommands() const {
+    QList<QStringList> commands{syncPortsCommand()};
+    if (!m_binaryCacheTool.isEmpty()) {
+        const BatchedOperation op = binaryCacheOperation();
+        commands << m_privilegeHelper.wrap(op.program, op.arguments);
+    }
+    return commands;
 }
 
 QList<QStringList> CruxAdapter::transactionCommands(const TransactionPlan &plan) const {
@@ -649,6 +676,7 @@ void CruxAdapter::startNextBatchedOperation() {
     }
 
     BatchedOperation op = m_pendingOperations.dequeue();
+    m_currentOperationOptional = op.optional;
     emit progressChanged(op.currentStep, op.totalSteps, op.description);
     emit outputReceived(QStringLiteral("[octoCRUX] %1").arg(op.description), false);
 
@@ -666,6 +694,27 @@ void CruxAdapter::startNextBatchedOperation() {
 }
 
 void CruxAdapter::onProcessRunnerFinished(int exitCode, OperationErrorKind errorKind, const QString &summary) {
+    const bool optionalFailed = m_currentOperationOptional && exitCode != 0 && !m_cancellationRequested
+                             && errorKind != OperationErrorKind::Cancelled
+                             && errorKind != OperationErrorKind::AuthenticationError;
+    m_currentOperationOptional = false;
+    if (optionalFailed) {
+        // d77crux-cache failing (no network, refused config) only means no binaries:
+        // the ports compile, as they would without it.
+        emit outputReceived(QStringLiteral("[octoCRUX] Warning: d77crux-cache did not succeed (exit code %1): "
+                                           "no binaries were placed; the ports compile as usual.").arg(exitCode), true);
+        if (!m_pendingOperations.isEmpty()) {
+            startNextBatchedOperation();
+            return;
+        }
+        exitCode = 0;
+        errorKind = OperationErrorKind::None;
+        // Only a sync ends with d77crux-cache, after a successful ports -u.
+        emit operationFinished(0, OperationErrorKind::None,
+                               QStringLiteral("Ports tree synchronized; d77crux-cache did not succeed"));
+        invalidateCache();
+        return;
+    }
     if (!m_pendingOperations.isEmpty() && exitCode == 0 && !m_cancellationRequested) {
         startNextBatchedOperation();
         return;
@@ -689,12 +738,22 @@ bool CruxAdapter::syncPortsTree() {
     m_pendingOperations.clear();
 
     const QString description = QStringLiteral("Updating ports tree via 'ports -u'...");
-    emit progressChanged(1, 1, description);
+    const int total = m_binaryCacheTool.isEmpty() ? 1 : 2;
+    emit progressChanged(1, total, description);
     emit outputReceived(QStringLiteral("[octoCRUX] %1").arg(description), false);
+    if (!m_binaryCacheTool.isEmpty()) {
+        // After a successful ports -u, place the binaries matching the new tree.
+        BatchedOperation cache = binaryCacheOperation();
+        cache.currentStep = 2;
+        cache.totalSteps = 2;
+        m_pendingOperations.enqueue(cache);
+    }
 
     const QStringList wrappedCmd = syncPortsCommand();
+    m_currentOperationOptional = false;
     const bool started = m_processRunner->startProcess(wrappedCmd.first(), wrappedCmd.mid(1));
     if (!started) {
+        m_pendingOperations.clear();
         const QString err = QStringLiteral("Failed to start '%1 -u'").arg(m_portsBin);
         emit outputReceived(QStringLiteral("[octoCRUX] Error: %1").arg(err), true);
         emit operationFinished(-1, OperationErrorKind::GeneralError, err);

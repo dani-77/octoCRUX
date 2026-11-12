@@ -97,6 +97,7 @@ private slots:
     void testCancelOffersToRemoveLeftoverWorkDir();
     void testLeftoverWorkDirKeptWhenDeclined();
     void testUpgradePreviewShowsBinaryAvailability();
+    void testSyncConfirmationListsTheCacheStep();
 
 private:
     QString readFile(const QString &filePath);
@@ -613,7 +614,64 @@ void TestMainWindow::testUpgradePreviewShowsBinaryAvailability() {
     QVERIFY2(summary.contains(QStringLiteral("binary snapshot published 3 days ago")), qPrintable(summary));
     QVERIFY(summary.contains(QStringLiteral("Binary on its way (the port is newer than the snapshot), compiles now (1): "
                                             "gtk3 (port 3.24.52-1, binary 3.24.51-1)")));
+    // d77crux-cache runs first, as root, so its binaries are in place for prt-get.
+    const QString fakeCache = m_sourceDir + QStringLiteral("/tests/scripts/fake_d77crux_cache.sh");
+    QVERIFY2(summary.contains(QStringLiteral("  1. ") + fakeCache + QStringLiteral("\n  2. prt-get update")), qPrintable(summary));
     QCOMPARE(probeLines(), QStringList{QStringLiteral("d77crux-cache -n")}); // rejected: nothing else ran
+
+    // "Leave out": gtk3 was the only update, so nothing is left to run, and the
+    // message says why. Still nothing runs.
+    QString leftOutText;
+    bool buttonShown = false;
+    onNextModal([&](QWidget *w) {
+        auto *dlg = qobject_cast<TransactionPreviewDialog*>(w);
+        if (!dlg) {
+            if (auto *d = qobject_cast<QDialog*>(w)) d->reject();
+            return;
+        }
+        buttonShown = dlg->postponeButton() && dlg->postponeButton()->text().contains(QStringLiteral("gtk3"));
+        onNextModal([&](QWidget *next) {
+            if (auto *box = qobject_cast<QMessageBox*>(next)) leftOutText = box->text();
+            if (auto *d = qobject_cast<QDialog*>(next)) d->reject();
+        });
+        if (dlg->postponeButton()) dlg->postponeButton()->click(); else dlg->reject();
+    });
+    toolButton(QStringLiteral("Upgrade All"))->click();
+    QTRY_VERIFY_WITH_TIMEOUT(!leftOutText.isEmpty(), 3000);
+    QVERIFY(buttonShown);
+    QVERIFY2(leftOutText.contains(QStringLiteral("Left out, binary on its way: gtk3")), qPrintable(leftOutText));
+    QCOMPARE(probeLines(), QStringList{QStringLiteral("d77crux-cache -n")});
+}
+
+void TestMainWindow::testSyncConfirmationListsTheCacheStep() {
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    auto restore = qScopeGuard([&]() {
+        removeFakeTools();
+        m_window->binaryCacheProbe()->setToolPath(QString());
+        m_adapter->setBinaryCacheTool(QString());
+    });
+    const QString fakeCache = m_sourceDir + QStringLiteral("/tests/scripts/fake_d77crux_cache.sh");
+    QString text;
+    const auto readAndCancel = [&]() {
+        onNextModal([&](QWidget *w) {
+            if (auto *box = qobject_cast<QMessageBox*>(w)) text = box->text();
+            if (auto *d = qobject_cast<QDialog*>(w)) d->reject();
+        });
+        toolButton(QStringLiteral("Sync"))->click();
+    };
+    QTest::qWait(50); // let a report scheduled by an earlier refresh go by (disabled) first
+    m_window->binaryCacheProbe()->setToolPath(fakeCache);
+    readAndCancel();
+    QTRY_VERIFY_WITH_TIMEOUT(!text.isEmpty(), 3000);
+    QVERIFY2(text.contains(QStringLiteral("  ports -u\n  ") + fakeCache), qPrintable(text));
+    QVERIFY(text.contains(QStringLiteral("d77crux-cache then places the verified binary packages")));
+
+    text.clear();
+    m_window->binaryCacheProbe()->setToolPath(QString()); // not installed: as before
+    readAndCancel();
+    QTRY_VERIFY_WITH_TIMEOUT(!text.isEmpty(), 3000);
+    QVERIFY(!text.contains(QStringLiteral("d77crux-cache")));
+    QVERIFY2(probeLines().isEmpty(), qPrintable(probeLines().join(QLatin1Char('|')))); // cancelled: nothing ran
 }
 
 bool TestMainWindow::installFakeTools() {

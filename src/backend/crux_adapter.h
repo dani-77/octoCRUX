@@ -70,6 +70,8 @@ public:
     // --- Mutations & Execution ---
     QList<QStringList> transactionCommands(const TransactionPlan &plan) const override;
     QStringList syncPortsCommand() const override;
+    QList<QStringList> syncCommands() const override;
+    void setBinaryCacheTool(const QString &path) override;
     bool executeTransaction(const TransactionPlan &plan) override;
     bool syncPortsTree() override;
     bool lockPort(const QString &portName) override;
@@ -85,6 +87,7 @@ private:
         QString description;
         int currentStep = 1;
         int totalSteps = 1;
+        bool optional = false; // a failure is reported, and the next operation still runs
     };
 
     // Single source of truth for how a plan becomes prt-get invocations; used by
@@ -102,6 +105,9 @@ private:
     PrivilegeHelper m_privilegeHelper;
     std::unique_ptr<CruxProcessRunner> m_processRunner;
     QQueue<BatchedOperation> m_pendingOperations;
+    bool m_currentOperationOptional = false;
+    QString m_binaryCacheTool;
+    BatchedOperation binaryCacheOperation() const;
     bool m_cancellationRequested = false;
 
     QString m_rootPrefix;

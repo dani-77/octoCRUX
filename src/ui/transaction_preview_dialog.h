@@ -32,6 +32,15 @@ public:
                              QWidget *parent = nullptr,
                              const BinaryCacheContext &binaries = BinaryCacheContext());
 
+    /** exec() result of "Leave out ...": the caller removes pendingBinaryPorts() and previews again. */
+    static constexpr int kPostponeResult = 2;
+
+    /** Updates in the plan whose binary is on its way (the port is newer than the snapshot). */
+    static QStringList pendingBinaryPorts(const TransactionPlan &plan, const BinaryCacheContext &binaries);
+
+    /** The "Leave out ..." button, or nullptr when no update has a binary on its way. */
+    QPushButton* postponeButton() const;
+
     /** The plain-text summary shown in the dialog. */
     QString summaryText() const;
     QPushButton* applyButton() const;
@@ -66,6 +75,7 @@ private:
     QPlainTextEdit *m_summary = nullptr;
     QPushButton *m_applyButton = nullptr;
     QPushButton *m_cancelButton = nullptr;
+    QPushButton *m_postponeButton = nullptr;
 };
 
 } // namespace OctoCRUX

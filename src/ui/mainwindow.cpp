@@ -6,6 +6,7 @@
 #include "backend/privilege_helper.h"
 
 #include <QApplication>
+#include <algorithm>
 #include <QLocale>
 #include <QTableView>
 #include <QTabWidget>
@@ -975,6 +976,22 @@ void MainWindow::updateActionButtons() {
     }
 }
 
+QString MainWindow::syncConfirmationText() {
+    m_backend->setBinaryCacheTool(m_binaryProbe->toolPath());
+    QStringList lines;
+    for (const QStringList &cmd : m_backend->syncCommands()) {
+        lines << QStringLiteral("  ") + TransactionPreviewDialog::formatCommand(cmd);
+    }
+    QString text = QStringLiteral("This runs, with elevated privileges:\n\n%1\n\n"
+                                  "It rewrites the ports tree under /usr/ports. Installed packages "
+                                  "are not changed.").arg(lines.join(QLatin1Char('\n')));
+    if (lines.size() > 1) {
+        text += QStringLiteral(" d77crux-cache then places the verified binary packages that match "
+                               "the new tree, so the next updates install them instead of compiling.");
+    }
+    return text;
+}
+
 void MainWindow::onSyncPortsClicked() {
     if (m_operationInProgress) return;
 
@@ -982,10 +999,7 @@ void MainWindow::onSyncPortsClicked() {
     // confirmation is enough, with Cancel as the default.
     QMessageBox box(QMessageBox::Question,
                     QStringLiteral("Synchronize ports tree"),
-                    QStringLiteral("This runs, with elevated privileges:\n\n  %1\n\n"
-                                   "It rewrites the ports tree under /usr/ports. Installed packages "
-                                   "are not changed.")
-                        .arg(TransactionPreviewDialog::formatCommand(m_backend->syncPortsCommand())),
+                    syncConfirmationText(),
                     QMessageBox::NoButton, this);
     box.setObjectName(QStringLiteral("syncConfirmMessage"));
     QPushButton *syncButton = box.addButton(QStringLiteral("Sync"), QMessageBox::AcceptRole);
@@ -1157,9 +1171,19 @@ bool MainWindow::runTransaction(const QString &title, TransactionPlan plan) {
         }
     }
 
+    // With d77crux-cache installed, it runs (as root) before the updates, so the
+    // binaries it verifies are in place when prt-get looks for them.
+    m_backend->setBinaryCacheTool(m_binaryProbe->toolPath());
+    plan.runBinaryCacheFirst = m_binaryProbe->isAvailable();
+
     if (!confirmTransaction(title, plan)) {
         return false; // nothing ran: the exceptions stay pending
     }
+    // Ports left out in the preview keep their exceptions for a later run.
+    consumed.erase(std::remove_if(consumed.begin(), consumed.end(), [&plan](const QString &port) {
+        return std::none_of(plan.steps.cbegin(), plan.steps.cend(),
+                            [&port](const TransactionStep &s) { return s.portName == port; });
+    }), consumed.end());
 
     m_overridesInFlight = consumed;
     if (m_outputLogEdit && m_tabWidget) {
@@ -1215,29 +1239,48 @@ void MainWindow::onBuildChecksChanged() {
     loadBuildChecks(m_detailPort); // refresh dependent widgets (radios, risk label)
 }
 
-bool MainWindow::confirmTransaction(const QString &title, const TransactionPlan &plan) {
-    const QList<QStringList> commands = m_backend->transactionCommands(plan);
-    if (commands.isEmpty()) {
-        QString text = QStringLiteral("Nothing to execute: the plan contains no actions.");
-        if (!plan.lockedSkipped.isEmpty()) {
-            text += QStringLiteral("\n\nSkipped because locked: %1")
-                        .arg(plan.lockedSkipped.join(QStringLiteral(" ")));
+bool MainWindow::confirmTransaction(const QString &title, TransactionPlan &plan) {
+    for (;;) {
+        const QList<QStringList> commands = m_backend->transactionCommands(plan);
+        if (commands.isEmpty()) {
+            QString text = QStringLiteral("Nothing to execute: the plan contains no actions.");
+            if (!plan.lockedSkipped.isEmpty()) {
+                text += QStringLiteral("\n\nSkipped because locked: %1")
+                            .arg(plan.lockedSkipped.join(QStringLiteral(" ")));
+            }
+            if (!plan.postponedForBinary.isEmpty()) {
+                text += QStringLiteral("\n\nLeft out, binary on its way: %1")
+                            .arg(plan.postponedForBinary.join(QStringLiteral(" ")));
+            }
+            QMessageBox box(QMessageBox::Information, title, text, QMessageBox::Ok, this);
+            box.setObjectName(QStringLiteral("nothingToDoMessage"));
+            box.exec();
+            return false;
         }
-        QMessageBox box(QMessageBox::Information, title, text, QMessageBox::Ok, this);
-        box.setObjectName(QStringLiteral("nothingToDoMessage"));
-        box.exec();
-        return false;
+
+        BinaryCacheContext binaries;
+        binaries.available = m_binaryProbe->isAvailable() && m_binaryProbe->hasReport();
+        binaries.report = m_binaryProbe->lastReport();
+        binaries.snapshotPublished = BinaryCacheContext::readSnapshotPublished(m_binarySnapshotFile);
+        binaries.now = QDateTime::currentDateTime();
+        binaries.largePorts = m_settings ? m_settings->largePorts() : OctoCruxSettings::defaultLargePorts();
+
+        TransactionPreviewDialog dialog(title, plan, commands, m_backend->privilegeHelperType(), this, binaries);
+        const int result = dialog.exec();
+        if (result != TransactionPreviewDialog::kPostponeResult) {
+            return result == QDialog::Accepted;
+        }
+        // Leave out the updates whose binary is on its way, and preview again: the
+        // user still has to press Apply on what is left.
+        const QStringList postponed = TransactionPreviewDialog::pendingBinaryPorts(plan, binaries);
+        plan.steps.erase(std::remove_if(plan.steps.begin(), plan.steps.end(), [&](const TransactionStep &s) {
+            return s.action == TransactionAction::Upgrade && postponed.contains(s.portName);
+        }), plan.steps.end());
+        for (const QString &port : postponed) {
+            plan.toUpdate.removeAll(port);
+            if (!plan.postponedForBinary.contains(port)) plan.postponedForBinary << port;
+        }
     }
-
-    BinaryCacheContext binaries;
-    binaries.available = m_binaryProbe->isAvailable() && m_binaryProbe->hasReport();
-    binaries.report = m_binaryProbe->lastReport();
-    binaries.snapshotPublished = BinaryCacheContext::readSnapshotPublished(m_binarySnapshotFile);
-    binaries.now = QDateTime::currentDateTime();
-    binaries.largePorts = m_settings ? m_settings->largePorts() : OctoCruxSettings::defaultLargePorts();
-
-    TransactionPreviewDialog dialog(title, plan, commands, m_backend->privilegeHelperType(), this, binaries);
-    return dialog.exec() == QDialog::Accepted;
 }
 
 QMessageBox* MainWindow::closeRefusedMessage() const {

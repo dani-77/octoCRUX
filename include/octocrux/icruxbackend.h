@@ -54,8 +54,16 @@ public:
      * Used to show the user what will run before any elevation happens.
      */
     virtual QList<QStringList> transactionCommands(const TransactionPlan &plan) const = 0;
-    /** The exact (wrapped) command line syncPortsTree() would run. */
+    /** The exact (wrapped) command line syncPortsTree() would run first ("ports -u"). */
     virtual QStringList syncPortsCommand() const = 0;
+    /** Every command syncPortsTree() runs, in order: ports -u, then d77crux-cache if set. */
+    virtual QList<QStringList> syncCommands() const { return {syncPortsCommand()}; }
+    /**
+     * d77crux-cache's path, or empty. When set, a sync runs it after ports -u,
+     * and a plan with runBinaryCacheFirst runs it before its build steps. Its
+     * failure never stops the operation: the ports then compile, as without it.
+     */
+    virtual void setBinaryCacheTool(const QString &path) { Q_UNUSED(path); }
     virtual bool executeTransaction(const TransactionPlan &plan) = 0;
     virtual bool syncPortsTree() = 0;
     virtual bool lockPort(const QString &portName) = 0;

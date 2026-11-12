@@ -91,6 +91,16 @@ TransactionPreviewDialog::TransactionPreviewDialog(const QString &title,
     layout->addWidget(m_summary);
 
     auto *buttons = new QDialogButtonBox(this);
+    const QStringList pending = pendingBinaryPorts(plan, binaries);
+    if (!pending.isEmpty()) {
+        // Postponing only shortens the run; it never starts anything by itself.
+        m_postponeButton = buttons->addButton(
+            QStringLiteral("Leave out %1 (binary on its way)").arg(pending.join(QStringLiteral(", "))),
+            QDialogButtonBox::ActionRole);
+        m_postponeButton->setObjectName(QStringLiteral("postponeButton"));
+        m_postponeButton->setAutoDefault(false);
+        connect(m_postponeButton, &QPushButton::clicked, this, [this]() { done(kPostponeResult); });
+    }
     m_applyButton = buttons->addButton(QStringLiteral("Apply"), QDialogButtonBox::AcceptRole);
     m_cancelButton = buttons->addButton(QDialogButtonBox::Cancel);
     // Cancel is the default: pressing Enter must never start a privileged operation.
@@ -109,6 +119,24 @@ QString TransactionPreviewDialog::summaryText() const {
 
 QPushButton* TransactionPreviewDialog::applyButton() const {
     return m_applyButton;
+}
+
+QPushButton* TransactionPreviewDialog::postponeButton() const {
+    return m_postponeButton;
+}
+
+QStringList TransactionPreviewDialog::pendingBinaryPorts(const TransactionPlan &plan, const BinaryCacheContext &binaries) {
+    QStringList pending;
+    if (!binaries.available) {
+        return pending;
+    }
+    for (const TransactionStep &step : plan.steps) {
+        if (step.action == TransactionAction::Upgrade && !pending.contains(step.portName)
+            && binaries.report.entry(step.portName).status == BinaryStatus::Pending) {
+            pending << step.portName;
+        }
+    }
+    return pending;
 }
 
 QPushButton* TransactionPreviewDialog::cancelButton() const {
@@ -260,6 +288,7 @@ QString TransactionPreviewDialog::describe(const TransactionPlan &plan,
     appendList(out, QStringLiteral("To lock"), portsWithAction(plan, TransactionAction::Lock));
     appendList(out, QStringLiteral("To unlock"), portsWithAction(plan, TransactionAction::Unlock));
     appendList(out, QStringLiteral("Skipped because locked"), plan.lockedSkipped);
+    appendList(out, QStringLiteral("Left out of this run, binary on its way"), plan.postponedForBinary);
     appendList(out, QStringLiteral("Installed dependents directly affected by removal"),
                plan.reverseDependentsDirect);
     QStringList indirect;

@@ -5,6 +5,9 @@
 #include <QTemporaryDir>
 #include "core/binary_cache_report.h"
 #include "ui/transaction_preview_dialog.h"
+#include "backend/crux_adapter.h"
+
+#include <QStandardPaths>
 
 using namespace OctoCRUX;
 
@@ -18,6 +21,11 @@ private slots:
     void testPreviewSection();
     void testPreviewSectionAbsentWithoutReport();
     void testProbeRunsTheToolAndKeepsTheLastGoodReport();
+    void testCacheStepComesFirstOnlyBeforeUpdates();
+    void testTransactionRunsCacheThenUpdates();
+    void testCacheFailureDoesNotStopTheUpdates();
+    void testSyncRunsCacheAfterPortsOnly();
+    void testPendingBinaryPorts();
 
 private:
     static QString fixture() {
@@ -192,6 +200,160 @@ void TestBinaryCache::testProbeRunsTheToolAndKeepsTheLastGoodReport() {
     disabled.setToolPath(QString());
     QVERIFY(!disabled.isAvailable());
     QVERIFY(!disabled.start());
+}
+
+namespace {
+const QString kFakeCache = QStringLiteral(OCTOCRUX_SOURCE_DIR "/tests/scripts/fake_d77crux_cache.sh");
+const QString kFakePrtGet = QStringLiteral(OCTOCRUX_SOURCE_DIR "/tests/scripts/fake_slow_prtget.sh");
+
+// An adapter that only ever runs the fakes above (no helper, absolute paths).
+struct FakeRun {
+    QTemporaryDir dir;
+    CruxAdapter adapter;
+    QString log;
+    FakeRun() {
+        log = dir.filePath(QStringLiteral("probe.log"));
+        qputenv("OCTOCRUX_PROBE_LOG", log.toLocal8Bit());
+        qputenv("FAKE_PRTGET_DURATION", "0");
+        adapter.setPrivilegeHelperType(PrivilegeHelperType::None);
+        adapter.setPrtGetBinary(kFakePrtGet);
+        adapter.setPortsBinary(kFakePrtGet);
+        adapter.setBinaryCacheTool(kFakeCache);
+    }
+    ~FakeRun() {
+        qunsetenv("OCTOCRUX_PROBE_LOG");
+        qunsetenv("FAKE_PRTGET_DURATION");
+        qunsetenv("FAKE_CACHE_PLACE_EXIT");
+    }
+    QStringList lines() const {
+        QFile f(log);
+        return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts)
+                                           : QStringList();
+    }
+};
+
+TransactionPlan upgradePlan(const QStringList &ports) {
+    TransactionPlan plan;
+    for (const QString &p : ports) {
+        TransactionStep s;
+        s.action = TransactionAction::Upgrade;
+        s.portName = p;
+        plan.steps << s;
+        plan.toUpdate << p;
+    }
+    return plan;
+}
+} // namespace
+
+void TestBinaryCache::testCacheStepComesFirstOnlyBeforeUpdates() {
+    CruxAdapter adapter;
+    adapter.setPrivilegeHelperType(PrivilegeHelperType::Sudo);
+    adapter.setBinaryCacheTool(QStringLiteral("/usr/bin/d77crux-cache"));
+    TransactionPlan plan = upgradePlan({QStringLiteral("dash"), QStringLiteral("git")});
+    plan.runBinaryCacheFirst = true;
+    QList<QStringList> cmds = adapter.transactionCommands(plan);
+    QCOMPARE(cmds.size(), 2);
+    QCOMPARE(cmds.at(0), (QStringList{QStringLiteral("sudo"), QStringLiteral("/usr/bin/d77crux-cache")}));
+    QCOMPARE(cmds.at(1).mid(0, 3), (QStringList{QStringLiteral("sudo"), QStringLiteral("prt-get"), QStringLiteral("update")}));
+
+    plan.runBinaryCacheFirst = false;                  // not asked for
+    QCOMPARE(adapter.transactionCommands(plan).size(), 1);
+    plan.runBinaryCacheFirst = true;
+    adapter.setBinaryCacheTool(QString());              // not installed
+    QCOMPARE(adapter.transactionCommands(plan).size(), 1);
+    adapter.setBinaryCacheTool(QStringLiteral("/usr/bin/d77crux-cache"));
+    TransactionPlan lock;                               // no update: nothing to place
+    TransactionStep s;
+    s.action = TransactionAction::Lock;
+    s.portName = QStringLiteral("llvm");
+    lock.steps << s;
+    lock.runBinaryCacheFirst = true;
+    QCOMPARE(adapter.transactionCommands(lock).size(), 1);
+
+    // Sync: ports -u, then d77crux-cache.
+    QCOMPARE(adapter.syncCommands(), (QList<QStringList>{{QStringLiteral("sudo"), QStringLiteral("ports"), QStringLiteral("-u")},
+                                                         {QStringLiteral("sudo"), QStringLiteral("/usr/bin/d77crux-cache")}}));
+    adapter.setBinaryCacheTool(QString());
+    QCOMPARE(adapter.syncCommands().size(), 1);
+}
+
+void TestBinaryCache::testTransactionRunsCacheThenUpdates() {
+    FakeRun run;
+    QSignalSpy spy(&run.adapter, &ICruxBackend::operationFinished);
+    TransactionPlan plan = upgradePlan({QStringLiteral("dash")});
+    plan.runBinaryCacheFirst = true;
+    QVERIFY(run.adapter.executeTransaction(plan));
+    QVERIFY(spy.wait(10000));
+    QCOMPARE(run.lines(), (QStringList{QStringLiteral("d77crux-cache"), QStringLiteral("update dash")}));
+    QCOMPARE(spy.first().at(0).toInt(), 0);
+}
+
+void TestBinaryCache::testCacheFailureDoesNotStopTheUpdates() {
+    FakeRun run;
+    qputenv("FAKE_CACHE_PLACE_EXIT", "1");
+    QSignalSpy spy(&run.adapter, &ICruxBackend::operationFinished);
+    QSignalSpy output(&run.adapter, &ICruxBackend::outputReceived);
+    TransactionPlan plan = upgradePlan({QStringLiteral("dash")});
+    plan.runBinaryCacheFirst = true;
+    QVERIFY(run.adapter.executeTransaction(plan));
+    QVERIFY(spy.wait(10000));
+    QCOMPARE(run.lines(), (QStringList{QStringLiteral("d77crux-cache"), QStringLiteral("update dash")}));
+    QCOMPARE(spy.first().at(0).toInt(), 0);
+    bool warned = false;
+    for (const auto &args : output) {
+        warned |= args.at(0).toString().contains(QStringLiteral("d77crux-cache did not succeed (exit code 1)"));
+    }
+    QVERIFY(warned);
+}
+
+void TestBinaryCache::testSyncRunsCacheAfterPortsOnly() {
+    {
+        FakeRun run;
+        QSignalSpy spy(&run.adapter, &ICruxBackend::operationFinished);
+        QVERIFY(run.adapter.syncPortsTree());
+        QVERIFY(spy.wait(10000));
+        QCOMPARE(run.lines(), (QStringList{QStringLiteral("-u"), QStringLiteral("d77crux-cache")}));
+        QCOMPARE(spy.first().at(0).toInt(), 0);
+    }
+    {
+        // d77crux-cache failing after a good ports -u: still a successful sync.
+        FakeRun run;
+        qputenv("FAKE_CACHE_PLACE_EXIT", "1");
+        QSignalSpy spy(&run.adapter, &ICruxBackend::operationFinished);
+        QVERIFY(run.adapter.syncPortsTree());
+        QVERIFY(spy.wait(10000));
+        QCOMPARE(spy.first().at(0).toInt(), 0);
+        QCOMPARE(spy.first().at(1).value<OperationErrorKind>(), OperationErrorKind::None);
+        QVERIFY(spy.first().at(2).toString().contains(QStringLiteral("d77crux-cache did not succeed")));
+    }
+    {
+        // ports -u failing: d77crux-cache never runs.
+        FakeRun run;
+        const QString falseBin = QStandardPaths::findExecutable(QStringLiteral("false"));
+        QVERIFY(!falseBin.isEmpty());
+        run.adapter.setPortsBinary(falseBin);
+        QSignalSpy spy(&run.adapter, &ICruxBackend::operationFinished);
+        QVERIFY(run.adapter.syncPortsTree());
+        QVERIFY(spy.wait(10000));
+        QVERIFY(spy.first().at(0).toInt() != 0);
+        QVERIFY(run.lines().isEmpty());
+    }
+}
+
+void TestBinaryCache::testPendingBinaryPorts() {
+    BinaryCacheContext ctx;
+    ctx.available = true;
+    ctx.report = BinaryCacheReport::parse(read(fixture()));
+    TransactionPlan plan = upgradePlan({QStringLiteral("dash"), QStringLiteral("git"), QStringLiteral("xorg-server")});
+    QCOMPARE(TransactionPreviewDialog::pendingBinaryPorts(plan, ctx),
+             (QStringList{QStringLiteral("dash"), QStringLiteral("xorg-server")}));
+    ctx.available = false;
+    QVERIFY(TransactionPreviewDialog::pendingBinaryPorts(plan, ctx).isEmpty());
+    // After "Leave out", the preview lists what was left out.
+    TransactionPlan left = upgradePlan({QStringLiteral("git")});
+    left.postponedForBinary = {QStringLiteral("dash"), QStringLiteral("xorg-server")};
+    QVERIFY(TransactionPreviewDialog::describe(left, {}, PrivilegeHelperType::None)
+                .contains(QStringLiteral("Left out of this run, binary on its way (2):\n  dash xorg-server")));
 }
 
 QTEST_GUILESS_MAIN(TestBinaryCache)

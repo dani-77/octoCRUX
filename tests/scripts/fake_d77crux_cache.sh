@@ -1,10 +1,16 @@
 #!/bin/sh
-# fake_d77crux_cache.sh - stands in for d77crux-cache(1) in tests: accepts only
-# -n (report only), logs its arguments, and prints the report file named by
-# FAKE_CACHE_REPORT (default: the real 2026-11-12 capture). FAKE_CACHE_FAIL
-# makes it fail like a run without network.
-[ -n "$OCTOCRUX_PROBE_LOG" ] && echo "d77crux-cache $*" >> "$OCTOCRUX_PROBE_LOG"
-[ "$1" = "-n" ] || { echo "fake d77crux-cache: only -n is supported" >&2; exit 2; }
+# fake_d77crux_cache.sh - stands in for d77crux-cache(1) in tests. Logs its
+# arguments to OCTOCRUX_PROBE_LOG.
+#   -n         report only: prints the file named by FAKE_CACHE_REPORT;
+#              FAKE_CACHE_FAIL makes it fail like a run without network.
+#   (no args)  the placing run (root in real life): prints one "cached" line
+#              and exits with FAKE_CACHE_PLACE_EXIT (default 0). It places nothing.
+[ -n "$OCTOCRUX_PROBE_LOG" ] && echo "d77crux-cache $*" | sed 's/ $//' >> "$OCTOCRUX_PROBE_LOG"
+if [ "$#" -eq 0 ]; then
+    echo "cached           fake                         1.0-1"
+    exit "${FAKE_CACHE_PLACE_EXIT:-0}"
+fi
+[ "$1" = "-n" ] || { echo "fake d77crux-cache: unsupported arguments: $*" >&2; exit 2; }
 if [ -n "$FAKE_CACHE_FAIL" ]; then
     echo "d77crux-cache: cannot download the manifest" >&2
     exit 1

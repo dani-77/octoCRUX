@@ -664,4 +664,7 @@ Tested with a fake `sudo` first in `PATH`: the dialog's choice reaches the backe
 - **Step A (done):** the background `d77crux-cache -n` report, the preview's "Binary packages" section with `[large]` marks, warnings and the snapshot's age, and the Large ports setting (ARCHITECTURE 5.2.3).
   - The real report of 2026-11-12 is a fixture: dash, desktop-file-utils and xorg-server `skip-version`; git `skip-absent`.
   - The UI test runs a fake `d77crux-cache` through the refresh to the Upgrade All preview. A mutation check confirmed it fails when the report does not reach the preview.
-- **Next:** step B (postpone pending ports; run `d77crux-cache` as root before Upgrade and after Sync), then step C (locked ports from their binary).
+- **Step B (done):** "Leave out <ports> (binary on its way)" in the preview (postpone, not lock, then preview again). d77crux-cache runs as root before updates and after `ports -u`, and its failure never stops the run (ARCHITECTURE 5.2.3).
+  - The tests run fakes end to end: the order of commands, a cache failure followed by the updates, a sync whose cache step fails yet succeeds, no cache step after a failed `ports -u`, and the left-out message.
+  - Mutation check: the backend tests fail when a d77crux-cache failure stops the run.
+- **Next:** step C (update a locked port from its binary).
