@@ -88,6 +88,7 @@ private:
         int currentStep = 1;
         int totalSteps = 1;
         bool optional = false; // a failure is reported, and the next operation still runs
+        bool alwaysRun = false; // runs even after a failure or a cancel (re-locking)
     };
 
     // Single source of truth for how a plan becomes prt-get invocations; used by
@@ -106,6 +107,11 @@ private:
     std::unique_ptr<CruxProcessRunner> m_processRunner;
     QQueue<BatchedOperation> m_pendingOperations;
     bool m_currentOperationOptional = false;
+    // The first failure of a batch: reported at its end, also when an alwaysRun
+    // operation ran after it and succeeded.
+    struct Failure { bool set = false; int exitCode = 0; OperationErrorKind kind = OperationErrorKind::None; QString summary; };
+    Failure m_firstFailure;
+    QList<BatchedOperation> lockedBinaryOperations(const TransactionPlan &plan) const;
     QString m_binaryCacheTool;
     BatchedOperation binaryCacheOperation() const;
     bool m_cancellationRequested = false;

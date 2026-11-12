@@ -7,6 +7,7 @@
 
 #include <QApplication>
 #include <algorithm>
+#include <QDir>
 #include <QLocale>
 #include <QTableView>
 #include <QTabWidget>
@@ -509,6 +510,59 @@ BinaryCacheProbe* MainWindow::binaryCacheProbe() const {
 
 void MainWindow::setBinarySnapshotFile(const QString &path) {
     m_binarySnapshotFile = path;
+}
+
+void MainWindow::setPackageDirOverride(const QString &path) {
+    m_packageDirOverride = path;
+}
+
+QString MainWindow::lockedBinaryArchive(const PortInfo &port) const {
+    if (!port.isOutdatedLocked() || !m_binaryProbe->isAvailable() || !m_binaryProbe->hasReport()
+        || m_binaryProbe->lastReport().entry(port.name).status != BinaryStatus::LockedAvailable) {
+        return QString();
+    }
+    // d77crux-cache's own rule: PKGMK_PACKAGE_DIR when it is one fixed
+    // directory, otherwise the port directory; always xz (it refuses others).
+    QString dir;
+    if (!m_packageDirOverride.isEmpty()) {
+        dir = m_packageDirOverride;
+    } else {
+        const auto setting = TransactionPlanner::configuredPackageDirectory(m_backend->rootPrefix());
+        switch (setting.kind) {
+        case TransactionPlanner::PackageDirSetting::Kind::Fixed: dir = setting.path; break;
+        case TransactionPlanner::PackageDirSetting::Kind::NotSet: dir = port.fullPortDirectory(); break;
+        case TransactionPlanner::PackageDirSetting::Kind::Unsupported: return QString();
+        }
+    }
+    if (dir.isEmpty() || port.version.isEmpty() || port.release.isEmpty()) {
+        return QString();
+    }
+    return QDir(dir).filePath(QStringLiteral("%1#%2-%3.pkg.tar.xz").arg(port.name, port.version, port.release));
+}
+
+bool MainWindow::requestUpdateFromBinary(const PortInfo &port) {
+    if (m_operationInProgress) {
+        return false;
+    }
+    const QString archive = lockedBinaryArchive(port);
+    if (archive.isEmpty()) {
+        return false;
+    }
+    TransactionPlan plan;
+    plan.requestedTargets = {port.name};
+    plan.toUpdate = {port.name};
+    plan.lockedBinaryPort = port.name;
+    plan.lockedBinaryArchive = archive;
+    for (TransactionAction action : {TransactionAction::Unlock, TransactionAction::Upgrade, TransactionAction::Lock}) {
+        TransactionStep step;
+        step.action = action;
+        step.portName = port.name;
+        step.collection = port.collection;
+        step.targetVersion = port.version + QLatin1Char('-') + port.release;
+        step.isLocked = true;
+        plan.steps << step;
+    }
+    return runTransaction(QStringLiteral("Update %1 from its binary").arg(port.name), plan);
 }
 
 void MainWindow::setFilterStatus(StatusFilter status) {
@@ -1341,6 +1395,13 @@ void MainWindow::onCustomContextMenuRequested(const QPoint &pos) {
     actUpgrade->setEnabled(port.installStatus == InstallStatus::Outdated
                            && port.lockStatus == LockStatus::Unlocked && !m_operationInProgress);
     connect(actUpgrade, &QAction::triggered, this, &MainWindow::onUpgradeClicked);
+
+    if (!lockedBinaryArchive(port).isEmpty()) {
+        QAction *actFromBinary = menu.addAction(QStringLiteral("Update '%1' from its binary (stays locked)").arg(port.name));
+        actFromBinary->setObjectName(QStringLiteral("updateFromBinaryAction"));
+        actFromBinary->setEnabled(!m_operationInProgress);
+        connect(actFromBinary, &QAction::triggered, this, [this, port]() { requestUpdateFromBinary(port); });
+    }
 
     menu.addSeparator();
 

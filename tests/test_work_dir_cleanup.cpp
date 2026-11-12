@@ -26,6 +26,7 @@ private slots:
     void testRequiresTheOwner();
     void testConfiguredWorkDirectoryHasNoFallback();
     void testAdapterRefusesUnsafePathsBeforeStarting();
+    void testConfiguredPackageDirectory();
 
 private:
     // A work directory as pkgmk leaves it: <root>/<name>/{pkg,src}.
@@ -148,6 +149,33 @@ void TestWorkDirCleanup::testAdapterRefusesUnsafePathsBeforeStarting() {
     QCOMPARE(spyFinished.count(), 0);
     QCOMPARE(adapter.removeWorkDirectoriesCommand({QStringLiteral("/usr/ports/work/zsh")}),
              (QStringList{QStringLiteral("rm"), QStringLiteral("-rf"), QStringLiteral("--"), QStringLiteral("/usr/ports/work/zsh")}));
+}
+
+void TestWorkDirCleanup::testConfiguredPackageDirectory() {
+    QTemporaryDir prefix;
+    QVERIFY(prefix.isValid());
+    QDir(prefix.path()).mkpath(QStringLiteral("etc"));
+    const QString conf = QDir(prefix.path()).filePath(QStringLiteral("etc/pkgmk.conf"));
+    const auto read = [&](const QByteArray &content) {
+        QFile f(conf);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) return TransactionPlanner::PackageDirSetting();
+        f.write(content);
+        f.close();
+        return TransactionPlanner::configuredPackageDirectory(prefix.path());
+    };
+    using Kind = TransactionPlanner::PackageDirSetting::Kind;
+    // The owner's line (T480s /etc/pkgmk.conf).
+    auto s = read("PKGMK_SOURCE_DIR=\"/usr/ports/distfiles\"\nPKGMK_PACKAGE_DIR=\"/usr/ports/packages\"\n");
+    QCOMPARE(s.kind, Kind::Fixed);
+    QCOMPARE(s.path, QStringLiteral("/usr/ports/packages"));
+    QCOMPARE(read("# PKGMK_PACKAGE_DIR=\"/x\"\n").kind, Kind::NotSet);       // commented: pkgmk's default, the port dir
+    QCOMPARE(read("PKGMK_PACKAGE_DIR=/srv/pkg/\n").path, QStringLiteral("/srv/pkg"));
+    // Anything OctoCRUX cannot evaluate without a shell is not guessed.
+    QCOMPARE(read("PKGMK_PACKAGE_DIR=\"$PWD/pkg\"\n").kind, Kind::Unsupported);
+    QCOMPARE(read("PKGMK_PACKAGE_DIR=\"`pwd`\"\n").kind, Kind::Unsupported);
+    QCOMPARE(read("PKGMK_PACKAGE_DIR=\"packages\"\n").kind, Kind::Unsupported);
+    QCOMPARE(read("case $x in\n  core) PKGMK_PACKAGE_DIR=\"/a\" ;;\nesac\n").kind, Kind::Unsupported);
+    QCOMPARE(read("PKGMK_PACKAGE_DIR=\"/a\"\nPKGMK_PACKAGE_DIR=\"/b\"\n").kind, Kind::Unsupported);
 }
 
 QTEST_GUILESS_MAIN(TestWorkDirCleanup)

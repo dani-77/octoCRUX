@@ -11,6 +11,13 @@ if [ -n "$OCTOCRUX_PROBE_LOG" ]; then
     echo "$@" >> "$OCTOCRUX_PROBE_LOG"
 fi
 
+# FAKE_PRTGET_FAIL_ON=<verb>: that verb (e.g. "update") fails at once, like a
+# failed build; the others behave as usual.
+if [ -n "$FAKE_PRTGET_FAIL_ON" ] && [ "$1" = "$FAKE_PRTGET_FAIL_ON" ]; then
+    echo "[fake_slow_prtget] simulated failure of '$1'" >&2
+    exit 1
+fi
+
 # Trap SIGTERM (sent by CruxProcessRunner::cancel via QProcess::terminate)
 cleanup() {
     echo "[fake_slow_prtget] Received SIGTERM cancellation signal! Cleaning up child processes..."

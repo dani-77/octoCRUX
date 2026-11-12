@@ -30,6 +30,45 @@ QString TransactionPlanner::discoverWorkDirectory(const QString &rootPrefix) {
     return QStringLiteral("/tmp");
 }
 
+TransactionPlanner::PackageDirSetting TransactionPlanner::configuredPackageDirectory(const QString &rootPrefix) {
+    PackageDirSetting setting;
+    QFile file(rootPrefix.isEmpty() || !QFileInfo::exists(rootPrefix + QStringLiteral("/etc/pkgmk.conf"))
+                   ? QStringLiteral("/etc/pkgmk.conf") : rootPrefix + QStringLiteral("/etc/pkgmk.conf"));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return setting;
+    }
+    static const QRegularExpression re(QStringLiteral(R"(^(\s*)(?:export\s+)?PKGMK_PACKAGE_DIR\s*=\s*(.*?)\s*$)"));
+    int assignments = 0;
+    QTextStream in(&file);
+    while (!in.atEnd()) {
+        const QString line = in.readLine();
+        if (line.trimmed().startsWith(QLatin1Char('#'))) continue;
+        const QRegularExpressionMatch m = re.match(line);
+        if (!m.hasMatch()) {
+            // Assigned some other way (e.g. "core) PKGMK_PACKAGE_DIR=... ;;" in a case).
+            if (line.contains(QStringLiteral("PKGMK_PACKAGE_DIR="))) {
+                return PackageDirSetting{PackageDirSetting::Kind::Unsupported, QString()};
+            }
+            continue;
+        }
+        ++assignments;
+        QString value = m.captured(2);
+        if (value.size() >= 2 && (value.startsWith(QLatin1Char('"')) || value.startsWith(QLatin1Char('\'')))
+            && value.endsWith(value.at(0))) {
+            value = value.mid(1, value.size() - 2);
+        }
+        const bool plain = m.captured(1).isEmpty() && value.startsWith(QLatin1Char('/'))
+            && !value.contains(QLatin1Char('$')) && !value.contains(QLatin1Char('`'))
+            && !value.contains(QLatin1Char(' ')) && !value.contains(QLatin1Char('"')) && !value.contains(QLatin1Char('\''));
+        setting.kind = plain ? PackageDirSetting::Kind::Fixed : PackageDirSetting::Kind::Unsupported;
+        setting.path = plain ? QDir::cleanPath(value) : QString();
+    }
+    if (assignments > 1) {
+        setting = PackageDirSetting{PackageDirSetting::Kind::Unsupported, QString()};
+    }
+    return setting;
+}
+
 std::optional<QString> TransactionPlanner::configuredWorkDirectory(const QString &rootPrefix) {
     QString confPath = rootPrefix + QStringLiteral("/etc/pkgmk.conf");
     QFile file(confPath);

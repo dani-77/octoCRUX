@@ -667,4 +667,8 @@ Tested with a fake `sudo` first in `PATH`: the dialog's choice reaches the backe
 - **Step B (done):** "Leave out <ports> (binary on its way)" in the preview (postpone, not lock, then preview again). d77crux-cache runs as root before updates and after `ports -u`, and its failure never stops the run (ARCHITECTURE 5.2.3).
   - The tests run fakes end to end: the order of commands, a cache failure followed by the updates, a sync whose cache step fails yet succeeds, no cache step after a failed `ports -u`, and the left-out message.
   - Mutation check: the backend tests fail when a d77crux-cache failure stops the run.
-- **Next:** step C (update a locked port from its binary).
+- **Step C (done):** "Update '<port>' from its binary (stays locked)" in the right-click menu. It runs unlock, d77crux-cache (required), a `test -f` guard on the exact archive, update, and a lock that always runs, also after a Cancel; the first failure is the result reported. The owner approved the design (2026-11-12): the guard prevents a 6-hour llvm compile when no binary was placed. `PKGMK_PACKAGE_DIR` must be a plain path, or unset (then the port directory is used).
+  - Tests: all five paths with fakes (success; missing archive; cache failure; failed update; Cancel during the update, then the lock still runs and the result is "Cancelled"), the `PKGMK_PACKAGE_DIR` reader, and the preview with the real llvm of the catalog fixture.
+  - A first test run found that Cancel cleared the queued lock; fixed: `cancelActiveOperation` keeps `alwaysRun` steps.
+  - Mutation check: without the guard, the backend tests fail.
+- **Open:** a real run on the T480s with llvm, when the report shows it as `locked … binary available`.

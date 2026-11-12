@@ -26,6 +26,10 @@ private slots:
     void testCacheFailureDoesNotStopTheUpdates();
     void testSyncRunsCacheAfterPortsOnly();
     void testPendingBinaryPorts();
+    void testLockedBinaryCommands();
+    void testLockedBinaryRunsAndRelocks();
+    void testLockedBinaryStopsBeforeCompiling();
+    void testLockedBinaryRelocksAfterCancel();
 
 private:
     static QString fixture() {
@@ -224,6 +228,7 @@ struct FakeRun {
         qunsetenv("OCTOCRUX_PROBE_LOG");
         qunsetenv("FAKE_PRTGET_DURATION");
         qunsetenv("FAKE_CACHE_PLACE_EXIT");
+        qunsetenv("FAKE_PRTGET_FAIL_ON");
     }
     QStringList lines() const {
         QFile f(log);
@@ -354,6 +359,117 @@ void TestBinaryCache::testPendingBinaryPorts() {
     left.postponedForBinary = {QStringLiteral("dash"), QStringLiteral("xorg-server")};
     QVERIFY(TransactionPreviewDialog::describe(left, {}, PrivilegeHelperType::None)
                 .contains(QStringLiteral("Left out of this run, binary on its way (2):\n  dash xorg-server")));
+}
+
+namespace {
+bool touch(const QString &path) {
+    QFile f(path);
+    return f.open(QIODevice::WriteOnly);
+}
+
+TransactionPlan lockedBinaryPlan(const QString &archive) {
+    TransactionPlan plan;
+    plan.lockedBinaryPort = QStringLiteral("llvm");
+    plan.lockedBinaryArchive = archive;
+    for (TransactionAction a : {TransactionAction::Unlock, TransactionAction::Upgrade, TransactionAction::Lock}) {
+        TransactionStep s;
+        s.action = a;
+        s.portName = QStringLiteral("llvm");
+        plan.steps << s;
+    }
+    return plan;
+}
+const QStringList kFullRun{QStringLiteral("unlock llvm"), QStringLiteral("d77crux-cache"),
+                           QStringLiteral("update llvm"), QStringLiteral("lock llvm")};
+} // namespace
+
+void TestBinaryCache::testLockedBinaryCommands() {
+    CruxAdapter adapter;
+    adapter.setPrivilegeHelperType(PrivilegeHelperType::Sudo);
+    adapter.setBinaryCacheTool(QStringLiteral("/usr/bin/d77crux-cache"));
+    const QString archive = QStringLiteral("/usr/ports/packages/llvm#23.1.3-1.pkg.tar.xz");
+    const QList<QStringList> cmds = adapter.transactionCommands(lockedBinaryPlan(archive));
+    QCOMPARE(cmds, (QList<QStringList>{
+        {QStringLiteral("sudo"), QStringLiteral("prt-get"), QStringLiteral("unlock"), QStringLiteral("llvm")},
+        {QStringLiteral("sudo"), QStringLiteral("/usr/bin/d77crux-cache")},
+        {QStringLiteral("sudo"), QStringLiteral("test"), QStringLiteral("-f"), archive},
+        {QStringLiteral("sudo"), QStringLiteral("prt-get"), QStringLiteral("update"), QStringLiteral("llvm")},
+        {QStringLiteral("sudo"), QStringLiteral("prt-get"), QStringLiteral("lock"), QStringLiteral("llvm")}}));
+    // Without d77crux-cache or without a known archive: nothing at all, never a bare update.
+    adapter.setBinaryCacheTool(QString());
+    QVERIFY(adapter.transactionCommands(lockedBinaryPlan(archive)).isEmpty());
+    adapter.setBinaryCacheTool(QStringLiteral("/usr/bin/d77crux-cache"));
+    QVERIFY(adapter.transactionCommands(lockedBinaryPlan(QString())).isEmpty());
+}
+
+void TestBinaryCache::testLockedBinaryRunsAndRelocks() {
+    FakeRun run;
+    const QString archive = run.dir.filePath(QStringLiteral("llvm#23.1.3-1.pkg.tar.xz"));
+    QVERIFY(touch(archive));
+    QSignalSpy spy(&run.adapter, &ICruxBackend::operationFinished);
+    QVERIFY(run.adapter.executeTransaction(lockedBinaryPlan(archive)));
+    QVERIFY(spy.wait(10000));
+    QCOMPARE(run.lines(), kFullRun);
+    QCOMPARE(spy.first().at(0).toInt(), 0);
+    QCOMPARE(spy.first().at(1).value<OperationErrorKind>(), OperationErrorKind::None);
+}
+
+void TestBinaryCache::testLockedBinaryStopsBeforeCompiling() {
+    const QStringList relockedWithoutUpdate{QStringLiteral("unlock llvm"), QStringLiteral("d77crux-cache"),
+                                            QStringLiteral("lock llvm")};
+    {
+        // The binary is not in place after d77crux-cache: the update never runs.
+        FakeRun run;
+        QSignalSpy spy(&run.adapter, &ICruxBackend::operationFinished);
+        QVERIFY(run.adapter.executeTransaction(lockedBinaryPlan(run.dir.filePath(QStringLiteral("missing.pkg.tar.xz")))));
+        QVERIFY(spy.wait(10000));
+        QCOMPARE(run.lines(), relockedWithoutUpdate);
+        QVERIFY(spy.first().at(0).toInt() != 0); // the guard's failure, not the relock's success
+    }
+    {
+        // d77crux-cache fails: here that stops the run (it is not optional).
+        FakeRun run;
+        qputenv("FAKE_CACHE_PLACE_EXIT", "1");
+        const QString archive = run.dir.filePath(QStringLiteral("llvm#23.1.3-1.pkg.tar.xz"));
+        QVERIFY(touch(archive));
+        QSignalSpy spy(&run.adapter, &ICruxBackend::operationFinished);
+        QVERIFY(run.adapter.executeTransaction(lockedBinaryPlan(archive)));
+        QVERIFY(spy.wait(10000));
+        QCOMPARE(run.lines(), relockedWithoutUpdate);
+        QCOMPARE(spy.first().at(0).toInt(), 1);
+    }
+    {
+        // The update itself fails: still locked again at the end, failure reported.
+        FakeRun run;
+        qputenv("FAKE_PRTGET_FAIL_ON", "update");
+        const QString archive = run.dir.filePath(QStringLiteral("llvm#23.1.3-1.pkg.tar.xz"));
+        QVERIFY(touch(archive));
+        QSignalSpy spy(&run.adapter, &ICruxBackend::operationFinished);
+        QSignalSpy output(&run.adapter, &ICruxBackend::outputReceived);
+        QVERIFY(run.adapter.executeTransaction(lockedBinaryPlan(archive)));
+        QVERIFY(spy.wait(10000));
+        QCOMPARE(run.lines(), kFullRun);
+        QCOMPARE(spy.first().at(0).toInt(), 1);
+        bool announced = false;
+        for (const auto &args : output) {
+            announced |= args.at(0).toString().contains(QStringLiteral("running the final step anyway"));
+        }
+        QVERIFY(announced);
+    }
+}
+
+void TestBinaryCache::testLockedBinaryRelocksAfterCancel() {
+    FakeRun run;
+    qputenv("FAKE_PRTGET_DURATION", "3"); // each prt-get call takes 3 s
+    const QString archive = run.dir.filePath(QStringLiteral("llvm#23.1.3-1.pkg.tar.xz"));
+    QVERIFY(touch(archive));
+    QSignalSpy spy(&run.adapter, &ICruxBackend::operationFinished);
+    QVERIFY(run.adapter.executeTransaction(lockedBinaryPlan(archive)));
+    QTRY_VERIFY_WITH_TIMEOUT(run.lines().contains(QStringLiteral("update llvm")), 10000);
+    run.adapter.cancelActiveOperation();
+    QVERIFY(spy.wait(15000));
+    QCOMPARE(run.lines(), kFullRun);                // locked again after the cancel
+    QCOMPARE(spy.first().at(1).value<OperationErrorKind>(), OperationErrorKind::Cancelled); // still reported as a cancel
 }
 
 QTEST_GUILESS_MAIN(TestBinaryCache)

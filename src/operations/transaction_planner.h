@@ -61,6 +61,18 @@ public:
      */
     static std::optional<QString> configuredWorkDirectory(const QString &rootPrefix = QString());
 
+    /** PKGMK_PACKAGE_DIR as far as OctoCRUX can read it without running a shell. */
+    struct PackageDirSetting {
+        enum class Kind { NotSet, Fixed, Unsupported } kind = Kind::NotSet;
+        QString path; ///< for Fixed: an absolute path
+    };
+    /**
+     * NotSet: pkgmk writes packages to the port directory. Fixed: one plain
+     * absolute path. Unsupported: anything else (variables, command
+     * substitution, several or indented assignments, e.g. inside a case).
+     */
+    static PackageDirSetting configuredPackageDirectory(const QString &rootPrefix = QString());
+
     /**
      * @brief Inspects empirical filesystem capacity and mount metadata for a path.
      */

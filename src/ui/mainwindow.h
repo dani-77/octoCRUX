@@ -83,6 +83,17 @@ public:
     BinaryCacheProbe* binaryCacheProbe() const;
     /** Where the binary snapshot date is read (tests point it elsewhere). */
     void setBinarySnapshotFile(const QString &path);
+    /** Package directory for the binary check; empty (default) reads PKGMK_PACKAGE_DIR from pkgmk.conf. */
+    void setPackageDirOverride(const QString &path);
+
+    /**
+     * The archive d77crux-cache would place for a locked, outdated port whose
+     * binary is available, or empty when "Update from binary" cannot be offered
+     * (no report, other status, or a PKGMK_PACKAGE_DIR OctoCRUX cannot read).
+     */
+    QString lockedBinaryArchive(const PortInfo &port) const;
+    /** Unlock, d77crux-cache, check the archive, update, lock again: through the preview. */
+    bool requestUpdateFromBinary(const PortInfo &port);
 
     /** Delay between checks that the cancelled tree has ended, and how many checks. */
     static constexpr int kLeftoverPollMs = 500;
@@ -252,6 +263,7 @@ private:
     QString m_workRootOverride;
     BinaryCacheProbe *m_binaryProbe = nullptr;
     QString m_binarySnapshotFile = QStringLiteral("/var/lib/d77crux-cache/channel-published");
+    QString m_packageDirOverride;
     std::shared_ptr<OctoCruxSettings> m_settings;
     bool m_syncInFlight = false;        // the running operation is ports -u
 };

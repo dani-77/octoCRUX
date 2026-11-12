@@ -98,6 +98,7 @@ private slots:
     void testLeftoverWorkDirKeptWhenDeclined();
     void testUpgradePreviewShowsBinaryAvailability();
     void testSyncConfirmationListsTheCacheStep();
+    void testUpdateLockedPortFromBinaryPreview();
 
 private:
     QString readFile(const QString &filePath);
@@ -672,6 +673,66 @@ void TestMainWindow::testSyncConfirmationListsTheCacheStep() {
     QTRY_VERIFY_WITH_TIMEOUT(!text.isEmpty(), 3000);
     QVERIFY(!text.contains(QStringLiteral("d77crux-cache")));
     QVERIFY2(probeLines().isEmpty(), qPrintable(probeLines().join(QLatin1Char('|')))); // cancelled: nothing ran
+}
+
+void TestMainWindow::testUpdateLockedPortFromBinaryPreview() {
+    // llvm is outdated and locked in the real catalog fixture (23.1.3-1 in the tree).
+    std::optional<PortInfo> llvm;
+    for (const PortInfo &p : m_window->packageModel()->ports()) {
+        if (p.name == QLatin1String("llvm")) llvm = p;
+    }
+    QVERIFY(llvm && llvm->isOutdatedLocked());
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString report = dir.filePath(QStringLiteral("report.txt"));
+    {
+        QFile f(report);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("locked           llvm                         23.1.3-1: binary available\n");
+    }
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    QTest::qWait(50); // let a report scheduled by an earlier refresh go by (disabled) first
+    auto restore = qScopeGuard([&]() {
+        removeFakeTools();
+        qunsetenv("FAKE_CACHE_REPORT");
+        m_window->binaryCacheProbe()->setToolPath(QString());
+        m_window->setPackageDirOverride(QString());
+        m_adapter->setBinaryCacheTool(QString());
+    });
+    // No report yet, or no d77crux-cache: never offered.
+    QVERIFY(m_window->lockedBinaryArchive(*llvm).isEmpty());
+
+    const QString fakeCache = m_sourceDir + QStringLiteral("/tests/scripts/fake_d77crux_cache.sh");
+    qputenv("FAKE_CACHE_REPORT", report.toLocal8Bit());
+    m_window->binaryCacheProbe()->setToolPath(fakeCache);
+    m_window->setPackageDirOverride(dir.path());
+    QSignalSpy spyReport(m_window->binaryCacheProbe(), &BinaryCacheProbe::reportReady);
+    QVERIFY(m_window->binaryCacheProbe()->start());
+    QVERIFY(spyReport.wait(5000));
+    const QString archive = dir.filePath(QStringLiteral("llvm#23.1.3-1.pkg.tar.xz"));
+    QCOMPARE(m_window->lockedBinaryArchive(*llvm), archive);
+
+    QString summary;
+    onNextModal([&](QWidget *w) {
+        if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(w)) summary = dlg->summaryText();
+        if (auto *d = qobject_cast<QDialog*>(w)) d->reject();
+    });
+    QVERIFY(!m_window->requestUpdateFromBinary(*llvm)); // rejected
+    QVERIFY2(summary.contains(QStringLiteral("  1. prt-get unlock llvm\n  2. ") + fakeCache
+                              + QStringLiteral("\n  3. ") + TransactionPreviewDialog::formatCommand({QStringLiteral("test"), QStringLiteral("-f"), archive})
+                              + QStringLiteral("\n  4. prt-get update llvm\n  5. prt-get lock llvm")), qPrintable(summary));
+    QVERIFY(summary.contains(QStringLiteral("llvm is unlocked only for this run, and locked again at the end")));
+    QVERIFY(!summary.contains(QStringLiteral("Binary available, but locked")));
+    QCOMPARE(probeLines(), QStringList{QStringLiteral("d77crux-cache -n")}); // nothing else ran
+
+    // Another port in the report with another status is not offered.
+    std::optional<PortInfo> clang;
+    for (const PortInfo &p : m_window->packageModel()->ports()) {
+        if (p.name == QLatin1String("clang")) clang = p;
+    }
+    QVERIFY(clang);
+    QVERIFY(m_window->lockedBinaryArchive(*clang).isEmpty());
 }
 
 bool TestMainWindow::installFakeTools() {

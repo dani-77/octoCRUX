@@ -461,7 +461,45 @@ int CruxAdapter::cancelGracePeriodMs() const {
 }
 
 // --- Mutations & Execution ---
+QList<CruxAdapter::BatchedOperation> CruxAdapter::lockedBinaryOperations(const TransactionPlan &plan) const {
+    QList<BatchedOperation> ops;
+    const QString port = plan.lockedBinaryPort;
+    if (m_binaryCacheTool.isEmpty() || plan.lockedBinaryArchive.isEmpty()) {
+        return ops; // nothing safe to run: never an update that could compile
+    }
+    auto prtGet = [this](const QStringList &args, const QString &description) {
+        BatchedOperation op;
+        op.program = m_prtGetBin;
+        op.arguments = args;
+        op.description = description;
+        return op;
+    };
+    ops << prtGet({QStringLiteral("unlock"), port}, QStringLiteral("Unlocking %1 for this run").arg(port));
+    BatchedOperation cache = binaryCacheOperation();
+    cache.optional = false; // here a failure must stop the run before the update
+    ops << cache;
+    // pkgmk installs the archive only if it is there; otherwise prt-get would
+    // compile the port, which is what this run exists to avoid.
+    BatchedOperation guard;
+    guard.program = QStringLiteral("test");
+    guard.arguments = {QStringLiteral("-f"), plan.lockedBinaryArchive};
+    guard.description = QStringLiteral("Checking that the binary is in place: %1").arg(plan.lockedBinaryArchive);
+    ops << guard;
+    ops << prtGet({QStringLiteral("update"), port}, QStringLiteral("Updating %1 from its binary").arg(port));
+    BatchedOperation relock = prtGet({QStringLiteral("lock"), port}, QStringLiteral("Locking %1 again").arg(port));
+    relock.alwaysRun = true;
+    ops << relock;
+    for (int i = 0; i < ops.size(); ++i) {
+        ops[i].currentStep = i + 1;
+        ops[i].totalSteps = ops.size();
+    }
+    return ops;
+}
+
 QList<CruxAdapter::BatchedOperation> CruxAdapter::buildBatchedOperations(const TransactionPlan &plan) const {
+    if (!plan.lockedBinaryPort.isEmpty()) {
+        return lockedBinaryOperations(plan);
+    }
     QList<BatchedOperation> ops;
 
     // Subordinate execution strictly to plan.steps (the sole vetted authority).
@@ -715,16 +753,34 @@ void CruxAdapter::onProcessRunnerFinished(int exitCode, OperationErrorKind error
         invalidateCache();
         return;
     }
-    if (!m_pendingOperations.isEmpty() && exitCode == 0 && !m_cancellationRequested) {
+    if (!m_pendingOperations.isEmpty() && exitCode == 0 && !m_cancellationRequested && !m_firstFailure.set) {
+        startNextBatchedOperation();
+        return;
+    }
+    // A cancel can end with exit code 0; its kind (Cancelled) still marks it.
+    if ((exitCode != 0 || errorKind != OperationErrorKind::None) && !m_firstFailure.set) {
+        m_firstFailure = {true, exitCode, errorKind, summary};
+    }
+    // After a failure or a cancel, skip to an operation that must run anyway.
+    while (!m_pendingOperations.isEmpty() && !m_pendingOperations.head().alwaysRun) {
+        m_pendingOperations.dequeue();
+    }
+    if (!m_pendingOperations.isEmpty()) {
+        emit outputReceived(QStringLiteral("[octoCRUX] The run stopped (%1); running the final step anyway.")
+                                .arg(m_firstFailure.set ? m_firstFailure.summary : QStringLiteral("cancelled")), true);
         startNextBatchedOperation();
         return;
     }
 
-    m_pendingOperations.clear();
     invalidateCache();
     checkRejectedConfigs();
-
-    emit operationFinished(exitCode, errorKind, summary);
+    const Failure failure = m_firstFailure;
+    m_firstFailure = Failure();
+    if (failure.set) {
+        emit operationFinished(failure.exitCode, failure.kind, failure.summary);
+    } else {
+        emit operationFinished(exitCode, errorKind, summary);
+    }
 }
 
 bool CruxAdapter::syncPortsTree() {
@@ -828,7 +884,13 @@ bool CruxAdapter::unlockPort(const QString &portName) {
 
 void CruxAdapter::cancelActiveOperation() {
     m_cancellationRequested = true;
-    m_pendingOperations.clear();
+    // Drop what is left, except the steps that must run anyway (re-locking a port
+    // that "Update from binary" unlocked).
+    QQueue<BatchedOperation> keep;
+    for (const BatchedOperation &op : std::as_const(m_pendingOperations)) {
+        if (op.alwaysRun) keep.enqueue(op);
+    }
+    m_pendingOperations = keep;
     if (m_processRunner && m_processRunner->isRunning()) {
         m_processRunner->cancel();
     }

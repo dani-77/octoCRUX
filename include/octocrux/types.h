@@ -235,6 +235,11 @@ struct TransactionPlan {
     // Binary packages (d77crux-cache)
     bool runBinaryCacheFirst = false;      // run d77crux-cache as root before the build steps
     QStringList postponedForBinary;        // updates left out of this run: their binary is on its way
+    // Update one locked port from its binary: unlock, d77crux-cache, check that
+    // lockedBinaryArchive is in place, update, and lock again (always). When set,
+    // these are the plan's only commands.
+    QString lockedBinaryPort;
+    QString lockedBinaryArchive;
 
     // Filesystem inspection
     FilesystemInfo workMountInfo;

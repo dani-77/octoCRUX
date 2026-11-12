@@ -185,7 +185,8 @@ QStringList TransactionPreviewDialog::describeBinaries(const TransactionPlan &pl
     for (const TransactionStep &step : plan.steps) {
         const bool buildStep = step.action == TransactionAction::Install || step.action == TransactionAction::Upgrade
                             || step.action == TransactionAction::Reinstall;
-        if (!buildStep || seen.contains(step.portName)) {
+        // The locked port updated from its binary has its own warning.
+        if (!buildStep || seen.contains(step.portName) || step.portName == plan.lockedBinaryPort) {
             continue;
         }
         seen << step.portName;
@@ -217,7 +218,15 @@ QStringList TransactionPreviewDialog::describeBinaries(const TransactionPlan &pl
             break;
         }
     }
-    if (ready.isEmpty() && notPlaced.isEmpty() && pending.isEmpty() && locked.isEmpty() && builds.isEmpty()) {
+    // Locked ports Upgrade All skipped although a binary is available.
+    QStringList lockedSkippedWithBinary;
+    for (const QString &port : plan.lockedSkipped) {
+        if (binaries.report.entry(port).status == BinaryStatus::LockedAvailable) {
+            lockedSkippedWithBinary << (binaries.largePorts.contains(port) ? port + QStringLiteral(" [large]") : port);
+        }
+    }
+    if (ready.isEmpty() && notPlaced.isEmpty() && pending.isEmpty() && locked.isEmpty() && builds.isEmpty()
+        && lockedSkippedWithBinary.isEmpty()) {
         return out;
     }
 
@@ -248,6 +257,8 @@ QStringList TransactionPreviewDialog::describeBinaries(const TransactionPlan &pl
     add(QStringLiteral("Binary on its way (the port is newer than the snapshot), compiles now"), pending);
     add(QStringLiteral("Binary available, but locked"), locked);
     add(QStringLiteral("Compiles from source"), builds);
+    add(QStringLiteral("Locked and skipped, but a binary is available (right-click > Update from its binary)"),
+        lockedSkippedWithBinary);
     out << QString();
 
     if (!largePending.isEmpty()) {
@@ -315,6 +326,11 @@ QString TransactionPreviewDialog::describe(const TransactionPlan &plan,
     }
 
     QStringList warnings = plan.criticalWarnings;
+    if (!plan.lockedBinaryPort.isEmpty()) {
+        warnings << QStringLiteral("%1 is unlocked only for this run, and locked again at the end, also if a step "
+                                   "fails or you cancel. If the binary is not in place after d77crux-cache, the run "
+                                   "stops before the update: nothing is compiled.").arg(plan.lockedBinaryPort);
+    }
     out << describeBinaries(plan, binaries, warnings);
     const QStringList unsignedPorts = signatureCheckDisabled(plan);
     if (!unsignedPorts.isEmpty()) {
