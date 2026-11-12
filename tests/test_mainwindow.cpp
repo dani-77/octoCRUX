@@ -25,6 +25,8 @@
 #include <QLineEdit>
 #include <QComboBox>
 #include <QSpinBox>
+#include <QProgressDialog>
+#include <QElapsedTimer>
 #include <QPlainTextEdit>
 #include <QTextBrowser>
 
@@ -99,6 +101,7 @@ private slots:
     void testUpgradePreviewShowsBinaryAvailability();
     void testSyncConfirmationListsTheCacheStep();
     void testUpdateLockedPortFromBinaryPreview();
+    void testPreviewWaitsForASlowBinaryReport();
 
 private:
     QString readFile(const QString &filePath);
@@ -733,6 +736,102 @@ void TestMainWindow::testUpdateLockedPortFromBinaryPreview() {
     }
     QVERIFY(clang);
     QVERIFY(m_window->lockedBinaryArchive(*clang).isEmpty());
+}
+
+void TestMainWindow::testPreviewWaitsForASlowBinaryReport() {
+    // Owner's report (2026-11-12, 0.1.2 installed): no "Binary packages" section.
+    // The real d77crux-cache -n takes about 2.3 s, and a preview opened before it
+    // finishes (always the case for the tray's "Upgrade All...", which opens the
+    // preview at start) had no report to show.
+    const QString printfPath = m_sourceDir + QStringLiteral("/tests/fixtures/crux3.8/cmd/printf-production-11token.out");
+    const QString original = readFile(printfPath);
+    QStringList lines = original.split(QLatin1Char('\n'));
+    for (QString &line : lines) {
+        QStringList f = line.split(QLatin1Char('\t'));
+        if (f.size() == 11 && f.at(0) == QLatin1String("gtk3") && f.at(3) == QLatin1String("yes")) {
+            f[3] = QStringLiteral("diff");
+            line = f.join(QLatin1Char('\t'));
+        }
+    }
+    const QStringList printfArgs = {QStringLiteral("printf"), QString::fromLatin1(PrintfParser::PRODUCTION_FORMAT)};
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString report = dir.filePath(QStringLiteral("report.txt"));
+    {
+        QFile f(report);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("skip-version     gtk3                         tree 3.24.52-1, release 3.24.51-1\n");
+    }
+    QVERIFY2(installFakeTools(), "fake prt-get/ports not first in PATH; refusing to click");
+    QTest::qWait(50); // let a report scheduled by an earlier refresh go by (disabled) first
+    auto restore = qScopeGuard([&]() {
+        removeFakeTools();
+        qunsetenv("FAKE_CACHE_REPORT");
+        qunsetenv("FAKE_CACHE_DELAY");
+        m_window->binaryCacheProbe()->setToolPath(QString());
+        m_adapter->setBinaryCacheTool(QString());
+        m_mockRunner->registerResponse(QStringLiteral("prt-get"), printfArgs, {0, original, QString()});
+        m_adapter->invalidateCache();
+        m_window->refreshCatalog();
+        QTest::qWait(50);
+    });
+    qputenv("FAKE_CACHE_REPORT", report.toLocal8Bit());
+    qputenv("FAKE_CACHE_DELAY", "1.5");
+    m_window->binaryCacheProbe()->setToolPath(m_sourceDir + QStringLiteral("/tests/scripts/fake_d77crux_cache.sh"));
+    m_mockRunner->registerResponse(QStringLiteral("prt-get"), printfArgs, {0, lines.join(QLatin1Char('\n')), QString()});
+    m_adapter->invalidateCache();
+    m_window->refreshCatalog(); // starts the slow report
+    m_window->setSearchText(QString());
+    m_window->tableView()->clearSelection();
+
+    // Upgrade All at once, as the tray does: the preview must still carry the report.
+    QString summary;
+    QTimer poll;
+    connect(&poll, &QTimer::timeout, this, [&]() {
+        if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(QApplication::activeModalWidget())) {
+            summary = dlg->summaryText();
+            dlg->reject();
+        }
+    });
+    poll.start(20);
+    QTimer::singleShot(0, m_window.get(), &MainWindow::requestUpgradeAll);
+    QTRY_VERIFY_WITH_TIMEOUT(!summary.isEmpty(), 10000);
+    poll.stop();
+    QVERIFY2(summary.contains(QStringLiteral("Binary on its way (the port is newer than the snapshot), compiles now (1): gtk3")),
+             qPrintable(summary));
+
+    // A report that takes too long: "Continue without" opens the preview at once,
+    // without the section (the next refresh tries again).
+    summary.clear();
+    qputenv("FAKE_CACHE_DELAY", "8");
+    m_adapter->invalidateCache();
+    m_window->refreshCatalog(); // a new, slow report
+    QTest::qWait(50);
+    bool skipped = false;
+    QTimer skipper;
+    connect(&skipper, &QTimer::timeout, this, [&]() {
+        if (auto *p = qobject_cast<QProgressDialog*>(QApplication::activeModalWidget())) {
+            // Click the dialog's own button, as the user does ("Continue without").
+            for (QPushButton *b : p->findChildren<QPushButton*>()) {
+                if (b->text() == QLatin1String("Continue without")) {
+                    b->click();
+                    skipped = true;
+                }
+            }
+        } else if (auto *dlg = qobject_cast<TransactionPreviewDialog*>(QApplication::activeModalWidget())) {
+            summary = dlg->summaryText();
+            dlg->reject();
+        }
+    });
+    skipper.start(20);
+    QElapsedTimer clock;
+    clock.start();
+    QTimer::singleShot(0, m_window.get(), &MainWindow::requestUpgradeAll);
+    QTRY_VERIFY_WITH_TIMEOUT(!summary.isEmpty(), 6000);
+    skipper.stop();
+    QVERIFY(skipped);
+    QVERIFY(clock.elapsed() < 4000);
+    QVERIFY(summary.contains(QStringLiteral("To update")));
 }
 
 bool TestMainWindow::installFakeTools() {

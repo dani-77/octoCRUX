@@ -672,3 +672,9 @@ Tested with a fake `sudo` first in `PATH`: the dialog's choice reaches the backe
   - A first test run found that Cancel cleared the queued lock; fixed: `cancelActiveOperation` keeps `alwaysRun` steps.
   - Mutation check: without the guard, the backend tests fail.
 - **Open:** a real run on the T480s with llvm, when the report shows it as `locked … binary available`.
+- **SCOFS, 2026-11-12 (0.1.2 installed):** the owner saw no "Binary packages" section at all. The tests were green because their fake d77crux-cache answered at once.
+  - **Cause [verified]:** the real `d77crux-cache -n` takes about 2.3 s. It runs in the background after each refresh, and a preview opened before it finished had no report. The tray's "Upgrade All..." always hit this, because it opens the preview at start.
+  - **Checked directly:** the same `BinaryCacheProbe` against the installed tool returns the right four entries after 2323 ms.
+  - **Reproducer:** a fake d77crux-cache with `FAKE_CACHE_DELAY=1.5` and Upgrade All at once. It failed before the fix.
+  - **Fix:** `waitForBinaryReport()` before every preview, which waits up to 20 s, with a progress dialog and "Continue without". Tested, including the skip button.
+  - **Lesson:** fakes for networked tools must also simulate their latency.

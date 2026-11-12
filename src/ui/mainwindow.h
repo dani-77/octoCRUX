@@ -95,6 +95,9 @@ public:
     /** Unlock, d77crux-cache, check the archive, update, lock again: through the preview. */
     bool requestUpdateFromBinary(const PortInfo &port);
 
+    /** Longest wait for the binary report before a preview; past it, the preview opens without it. */
+    static constexpr int kBinaryReportWaitMs = 20000;
+
     /** Delay between checks that the cancelled tree has ended, and how many checks. */
     static constexpr int kLeftoverPollMs = 500;
     static constexpr int kLeftoverPollAttempts = 20;
@@ -188,6 +191,13 @@ private:
     void checkLeftoverWorkDirs(int attemptsLeft);
     /** The Sync confirmation: every command it runs (ports -u, then d77crux-cache if installed). */
     QString syncConfirmationText();
+    /**
+     * Before a preview: if d77crux-cache is installed and its report is still
+     * running (or none exists yet), wait for it, so the preview can say which
+     * updates install from a binary. Shows a skippable progress dialog when it
+     * takes longer than half a second.
+     */
+    void waitForBinaryReport();
     QString leftoverWorkRoot() const;
     /** True if at least one package is outdated and unlocked (Upgrade All has work). */
     bool hasUpgradablePackages() const;

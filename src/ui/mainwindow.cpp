@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <QDir>
 #include <QLocale>
+#include <QEventLoop>
+#include <QProgressDialog>
 #include <QTableView>
 #include <QTabWidget>
 #include <QLineEdit>
@@ -1293,7 +1295,35 @@ void MainWindow::onBuildChecksChanged() {
     loadBuildChecks(m_detailPort); // refresh dependent widgets (radios, risk label)
 }
 
+void MainWindow::waitForBinaryReport() {
+    if (!m_binaryProbe->isAvailable() || (m_binaryProbe->hasReport() && !m_binaryProbe->isRunning())) {
+        return;
+    }
+    if (!m_binaryProbe->isRunning() && !m_binaryProbe->start()) {
+        return;
+    }
+    QProgressDialog progress(QStringLiteral("Checking which updates have binary packages (d77crux-cache)..."),
+                             QStringLiteral("Continue without"), 0, 0, this);
+    progress.setObjectName(QStringLiteral("binaryReportProgress"));
+    progress.setWindowTitle(QStringLiteral("Binary packages"));
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(500); // not shown at all for a quick report
+    QEventLoop loop;
+    QTimer limit;
+    limit.setSingleShot(true);
+    connect(&limit, &QTimer::timeout, &loop, &QEventLoop::quit);
+    connect(m_binaryProbe, &BinaryCacheProbe::reportReady, &loop, &QEventLoop::quit);
+    connect(&progress, &QProgressDialog::canceled, &loop, &QEventLoop::quit);
+    limit.start(kBinaryReportWaitMs);
+    progress.setValue(0);
+    if (m_binaryProbe->isRunning()) {
+        loop.exec();
+    }
+    progress.reset();
+}
+
 bool MainWindow::confirmTransaction(const QString &title, TransactionPlan &plan) {
+    waitForBinaryReport();
     for (;;) {
         const QList<QStringList> commands = m_backend->transactionCommands(plan);
         if (commands.isEmpty()) {
